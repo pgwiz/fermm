@@ -184,7 +184,7 @@ prompt_domain() {
             if [[ "$choice" =~ ^[0-9]+$ ]]; then
                 local idx=$((choice - 1))
                 if [[ $idx -ge 0 && $idx -lt ${#existing_domains[@]} ]]; then
-                    echo "${existing_domains[$idx]}"
+                    echo "EXISTING|${existing_domains[$idx]}"
                     return
                 else
                     print_error "Invalid selection (must be 1-${#existing_domains[@]})"
@@ -212,7 +212,7 @@ prompt_domain() {
         fi
     done
 
-    echo "$domain"
+    echo "NEW|$domain"
 }
 
 prompt_email() {
@@ -720,8 +720,18 @@ main() {
     check_prerequisites
 
     # Prompt for configuration
-    DOMAIN=$(prompt_domain)
-    USE_SSL=$(prompt_use_ssl)
+    DOMAIN_RESULT=$(prompt_domain)
+    DOMAIN_TYPE=$(echo "$DOMAIN_RESULT" | cut -d'|' -f1)
+    DOMAIN=$(echo "$DOMAIN_RESULT" | cut -d'|' -f2-)
+    
+    # Only prompt for SSL on NEW domains
+    if [[ "$DOMAIN_TYPE" == "NEW" ]]; then
+        USE_SSL=$(prompt_use_ssl)
+    else
+        USE_SSL="false"
+        print_success "Using existing domain - skipping SSL setup"
+    fi
+    
     PORTS=$(prompt_port)
     
     HTTP_PORT=$(echo "$PORTS" | cut -d'|' -f1)
@@ -742,7 +752,7 @@ main() {
     # Update docker-compose
     update_docker_compose "$HTTP_PORT" "$HTTPS_PORT"
 
-    # Setup SSL if requested
+    # Setup SSL if requested (only for new domains)
     if [[ "$USE_SSL" == "true" ]]; then
         setup_ssl_with_certbot "$DOMAIN" "$EMAIL" || {
             print_warning "SSL setup skipped, you can configure it later"
