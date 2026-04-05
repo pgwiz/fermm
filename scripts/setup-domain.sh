@@ -60,10 +60,14 @@ get_configured_domains() {
     
     # Check Docker nginx.conf (FERMM-managed)
     if [[ -f "$NGINX_CONF" ]]; then
-        domains+=$(grep -oP '(?<=server_name\s)[^;]+' "$NGINX_CONF" 2>/dev/null | \
+        domains+=$(grep 'server_name' "$NGINX_CONF" 2>/dev/null | \
+            grep -v '^#' | \
+            sed 's/.*server_name\s*//g' | \
+            sed 's/;.*//' | \
             tr ' ' '\n' | \
             grep -v '^_$' | \
-            grep -v 'www\.' || true)
+            grep -v '^www\.' | \
+            grep -v '^$' || true)
     fi
     
     # Check system nginx configs (existing domains on server)
@@ -71,10 +75,12 @@ get_configured_domains() {
         domains+=$'\n'
         domains+=$(grep -r 'server_name' /etc/nginx/sites-enabled 2>/dev/null | \
             grep -v '^#' | \
-            grep -oP '(?<=server_name\s)[^;]+' | \
+            sed 's/.*server_name\s*//g' | \
+            sed 's/;.*//' | \
             tr ' ' '\n' | \
             grep -v '^_$' | \
-            grep -v 'www\.' || true)
+            grep -v '^www\.' | \
+            grep -v '^$' || true)
     fi
     
     # Return sorted unique domains
