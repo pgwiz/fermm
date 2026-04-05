@@ -1,4 +1,4 @@
-version: '3.8'
+version: '2.2'
 
 # FERMM Production Docker Compose for Ubuntu
 # This file pulls the pre-built image from Docker Hub (popox15/fermm-server)
@@ -96,10 +96,6 @@ services:
       - certbot_certs:/etc/letsencrypt
       - certbot_www:/var/www/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
-    profiles:
-      - ssl
-    depends_on:
-      - fermm-nginx
 
 networks:
   fermm-network:

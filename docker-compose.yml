@@ -1,3 +1,5 @@
+version: '2.2'
+
 services:
   fermm-server:
     # Use Docker Hub image (production)
@@ -58,8 +60,6 @@ services:
       - certbot_certs:/etc/letsencrypt
       - certbot_www:/var/www/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-    profiles:
-      - ssl
 
 networks:
   fermm-network:
