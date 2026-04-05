@@ -7,6 +7,8 @@ services:
     container_name: fermm-server
     restart: unless-stopped
     env_file: .env
+    ports:
+      - "8080:8000"
     environment:
       - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD}@fermm-postgres:5432/fermm
       - FERMM_JWT_SECRET=${JWT_SECRET}
