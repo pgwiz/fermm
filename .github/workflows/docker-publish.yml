@@ -63,21 +63,38 @@ jobs:
         with:
           generate_release_notes: true
           body: |
-            ## Docker Image
+            ## FERMM ${{ github.ref_name }} Release
             
-            **Available as:**
-            - `${{ secrets.DOCKER_USERNAME }}/fermm-server:${{ github.ref_name }}`
-            - `${{ secrets.DOCKER_USERNAME }}/fermm-server:latest`
+            ### Docker Images
             
-            **Usage:**
+            **fermm-server:**
             ```bash
             docker pull ${{ secrets.DOCKER_USERNAME }}/fermm-server:${{ github.ref_name }}
+            docker pull ${{ secrets.DOCKER_USERNAME }}/fermm-server:latest
             ```
             
-            Or in `docker-compose.yml`:
+            **Using in docker-compose.yml:**
             ```yaml
             services:
               fermm-server:
                 image: ${{ secrets.DOCKER_USERNAME }}/fermm-server:${{ github.ref_name }}
+              
+              fermm-nginx:
+                image: nginx:alpine
+              
+              fermm-postgres:
+                image: postgres:16-alpine
             ```
-
+            
+            ### Quick Start
+            ```bash
+            git clone https://github.com/${{ github.repository }}.git
+            cd fermm
+            sudo docker-compose -f docker-compose.ubuntu-alt.yml up -d
+            ```
+            
+            ### Domain Setup
+            See [DOMAIN-ROUTING-COMPLETE.md](https://github.com/${{ github.repository }}/blob/main/md/DOMAIN-ROUTING-COMPLETE.md) for domain configuration.
+            
+            ### Changes
+            Auto-generated release notes above.
