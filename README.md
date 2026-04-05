@@ -18,6 +18,17 @@ Self-hosted, multiplatform Remote Management system. Your own private RMM.
 
 For detailed documentation, see the [md/](md/) folder.
 
+### Configure Domain (Port 80/443)
+
+```bash
+# Option 1: If port 80/443 available
+sudo bash scripts/setup-domain.sh
+
+# Option 2: If port 80/443 in use (system nginx) OR script fails
+# Follow manual guide: md/MANUAL-DOMAIN-SETUP.md
+# (More reliable, no script escaping issues)
+```
+
 ### Deploy Server (Docker)
 
 **On your VPS/Ubuntu server:**
