@@ -1,0 +1,105 @@
+# Quick Test Guide
+
+## Test the hello-server locally
+
+```bash
+# Start hello server
+python3 hello-server.py
+# Output: Hello world server running on :8000
+
+# In another terminal, test it
+curl http://localhost:8000
+# Output: hello world
+```
+
+## Setup rmm.bware.systems -> hello-server
+
+```bash
+# 1. Kill any existing service on port 8000
+# 2. Start hello server in background
+python3 hello-server.py &
+
+# 3. Setup domain pointing to port 8000
+sudo bash scripts/quick-domain.sh
+# Enter domain: rmm.bware.systems
+# Enter backend port (default: 8000): 8000
+
+# 4. Verify nginx is routing correctly
+curl http://rmm.bware.systems:8080/
+# Output: hello world
+
+# With SSL:
+curl https://rmm.bware.systems:8443/
+# Output: hello world
+```
+
+## Test path-based routing
+
+```bash
+# Start multiple hello servers on different ports
+python3 -c "
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'hello from /1')
+    def log_message(self, format, *args): pass
+
+server = HTTPServer(('0.0.0.0', 8001), Handler)
+server.serve_forever()
+" &
+
+# Add path routing
+sudo bash scripts/add-service-path.sh
+# Enter domain: rmm.bware.systems
+# Enter path: /1
+# Enter backend port: 8001
+
+# Test
+curl http://rmm.bware.systems:8080/
+# Output: hello world (from port 8000)
+
+curl http://rmm.bware.systems:8080/1
+# Output: hello from /1 (from port 8001)
+```
+
+## Verify Nginx Configuration
+
+```bash
+# Check generated config
+cat conf.d/rmm.bware.systems.conf
+
+# Verify nginx syntax
+docker exec fermm-nginx nginx -t
+
+# View nginx logs
+docker logs fermm-nginx | tail -20
+```
+
+## What's Configured
+
+- ✅ Multi-domain support (different backend ports per domain)
+- ✅ Path-based routing (same domain, different paths)
+- ✅ Certificate detection (auto-skips SSL setup if cert exists)
+- ✅ Certificate status display (shows expiry)
+- ✅ Proper proxy headers (X-Forwarded-For, X-Real-IP, etc)
+- ✅ Hello-server for testing
+
+## Scripts Available
+
+```bash
+# Setup domain with custom backend port
+sudo bash scripts/quick-domain.sh
+
+# More options (port detection, SSL setup, etc)
+sudo bash scripts/setup-domain.sh
+
+# Add service path to existing domain
+sudo bash scripts/add-service-path.sh
+
+# Test domain detection
+sudo bash scripts/test-domain-detection.sh
+```
