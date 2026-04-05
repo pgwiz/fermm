@@ -160,16 +160,19 @@ prompt_domain() {
     
     # If domains exist, show them
     if [[ ${#existing_domains[@]} -gt 0 ]]; then
-        print_success "Currently configured domains:"
+        print_success "Available domains:"
+        echo ""
         for i in "${!existing_domains[@]}"; do
-            echo "  $((i+1)). ${existing_domains[$i]}"
+            printf "   %2d) %s\n" $((i+1)) "${existing_domains[$i]}"
         done
+        echo ""
+        print_success "────────────────────────────────────────"
         echo ""
         
         # Ask if user wants to use existing or add new
         local choice=""
         while [[ -z "$choice" ]]; do
-            read -p "Select domain (number) or press Enter to add new domain: " choice
+            read -p "Choose domain (1-${#existing_domains[@]}) or press Enter for new: " choice
             
             # If empty, add new domain
             if [[ -z "$choice" ]]; then
@@ -184,24 +187,27 @@ prompt_domain() {
                     echo "${existing_domains[$idx]}"
                     return
                 else
-                    print_error "Invalid selection"
+                    print_error "Invalid selection (must be 1-${#existing_domains[@]})"
                     choice=""
                 fi
             else
-                print_error "Please enter a number or leave blank for new domain"
+                print_error "Please enter a number or press Enter for new domain"
                 choice=""
             fi
         done
     fi
 
     # Prompt for new domain
+    echo ""
+    print_success "────────────────────────────────────────"
+    echo ""
     local domain=""
     while [[ -z "$domain" ]]; do
-        read -p "Enter your domain name (e.g., fermm.example.com): " domain
+        read -p "Enter new domain (e.g., fermm.example.com): " domain
         
         # Basic validation
         if [[ ! "$domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-            print_error "Invalid domain format"
+            print_error "Invalid domain format (use lowercase letters, numbers, hyphens)"
             domain=""
         fi
     done
