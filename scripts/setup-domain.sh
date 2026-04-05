@@ -9,7 +9,9 @@
 # 3. Setup SSL with Let's Encrypt (optional)
 # 4. Start/restart services
 #
-# Usage: ./setup-domain.sh
+# Usage:
+#   sudo bash scripts/setup-domain.sh          # Interactive setup
+#   sudo bash scripts/setup-domain.sh --test   # Test domain detection
 ###############################################################################
 
 set -e
@@ -650,7 +652,38 @@ verify_setup() {
 # Main Script
 ###############################################################################
 
+test_domain_detection() {
+    print_header
+    print_section "Testing Domain Detection"
+    
+    local -a domains=($(get_configured_domains))
+    
+    echo "Checking for configured domains..."
+    echo ""
+    echo "Docker nginx.conf: $NGINX_CONF"
+    echo "System nginx: /etc/nginx/sites-enabled"
+    echo ""
+    
+    if [[ ${#domains[@]} -eq 0 ]]; then
+        print_warning "No domains detected"
+    else
+        print_success "Found ${#domains[@]} domain(s):"
+        for i in "${!domains[@]}"; do
+            echo "  $((i+1)). ${domains[$i]}"
+        done
+    fi
+    
+    echo ""
+    print_success "Domain detection test complete"
+    exit 0
+}
+
 main() {
+    # Check for --test flag
+    if [[ "$1" == "--test" ]]; then
+        test_domain_detection
+    fi
+    
     print_header
 
     # Check prerequisites
