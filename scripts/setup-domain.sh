@@ -626,15 +626,15 @@ restart_services() {
 
     print_warning "Stopping existing services..."
     cd "$FERMM_ROOT"
-    sudo docker-compose -f docker-compose.ubuntu.yml down || true
+    docker-compose -f docker-compose.ubuntu.yml down || true
 
     print_warning "Starting services with new configuration..."
-    sudo docker-compose -f docker-compose.ubuntu.yml up -d
+    docker-compose -f docker-compose.ubuntu.yml up -d
 
     sleep 5
 
     # Check if services are running
-    if sudo docker-compose -f docker-compose.ubuntu.yml ps | grep -q "Up"; then
+    if docker-compose -f docker-compose.ubuntu.yml ps | grep -q "Up"; then
         print_success "Services started successfully"
     else
         print_error "Services failed to start"
