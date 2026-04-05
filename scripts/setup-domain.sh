@@ -679,7 +679,8 @@ test_domain_detection() {
     print_header
     print_section "Testing Domain Detection"
     
-    local -a domains=($(get_configured_domains))
+    local domains_raw=$(get_configured_domains)
+    local -a domains=($(echo "$domains_raw" | sort -u))
     
     echo "Checking for configured domains..."
     echo ""
