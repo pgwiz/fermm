@@ -1,0 +1,53 @@
+name: Build Agent Binaries
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Windows x64
+        run: |
+          dotnet publish fermm-agent -c Release -r win-x64 \
+            --self-contained true -p:PublishSingleFile=true \
+            -o dist/windows
+
+      - name: Build Linux x64
+        run: |
+          dotnet publish fermm-agent -c Release -r linux-x64 \
+            --self-contained true -p:PublishSingleFile=true \
+            -o dist/linux
+
+      - name: Build macOS ARM64
+        run: |
+          dotnet publish fermm-agent -c Release -r osx-arm64 \
+            --self-contained true -p:PublishSingleFile=true \
+            -o dist/macos
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fermm-agent-binaries
+          path: |
+            dist/windows/fermm-agent.exe
+            dist/linux/fermm-agent
+            dist/macos/fermm-agent
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/windows/fermm-agent.exe
+            dist/linux/fermm-agent
+            dist/macos/fermm-agent

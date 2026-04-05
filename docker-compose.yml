@@ -1,0 +1,78 @@
+services:
+  fermm-server:
+    # Uncomment one of the following:
+    # Option 1: Build locally
+    build:
+      context: .
+      dockerfile: fermm-server/Dockerfile
+    
+    # Option 2: Pull from Docker Hub (replace with your version tag)
+    # image: popox15/fermm-server:latest
+    
+    container_name: fermm-server
+    restart: unless-stopped
+    environment:
+      - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD:-fermm}@postgres:5432/fermm
+      - FERMM_JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - FERMM_ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - FERMM_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fermm-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: fermm-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=fermm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fermm}
+      - POSTGRES_DB=fermm
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fermm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fermm-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: fermm-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./fermm-dashboard/dist:/usr/share/nginx/html:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - fermm-server
+    networks:
+      - fermm-network
+
+  # Optional: Let's Encrypt certificate renewal
+  certbot:
+    image: certbot/certbot
+    container_name: fermm-certbot
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    profiles:
+      - ssl
+
+networks:
+  fermm-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  certbot_certs:
+  certbot_www:

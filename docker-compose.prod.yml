@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  fermm-server:
+    # Use Docker Hub image (production)
+    image: popox15/fermm-server:latest
+    container_name: fermm-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD:-fermm}@fermm-postgres:5432/fermm
+      - FERMM_JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - FERMM_ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - FERMM_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+    depends_on:
+      fermm-postgres:
+        condition: service_healthy
+    networks:
+      - fermm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  fermm-postgres:
+    image: postgres:16-alpine
+    container_name: fermm-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=fermm
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fermm}
+      - POSTGRES_DB=fermm
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fermm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fermm-network
+
+  fermm-nginx:
+    image: nginx:alpine
+    container_name: fermm-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./fermm-dashboard/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - fermm-server
+    networks:
+      - fermm-network
+
+networks:
+  fermm-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
