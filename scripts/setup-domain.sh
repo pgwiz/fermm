@@ -55,6 +55,20 @@ print_warning() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
 
+get_configured_domains() {
+    # Extract domain names from nginx.conf server_name declarations
+    if [[ ! -f "$NGINX_CONF" ]]; then
+        echo ""
+        return
+    fi
+    
+    grep -oP '(?<=server_name\s)[^;]+' "$NGINX_CONF" | \
+        tr ' ' '\n' | \
+        grep -v '^_$' | \
+        grep -v 'www\.' | \
+        sort -u
+}
+
 check_prerequisites() {
     print_section "Checking Prerequisites"
 
@@ -114,6 +128,46 @@ check_prerequisites() {
 prompt_domain() {
     print_section "Domain Configuration"
 
+    # Get already configured domains
+    local -a existing_domains=($(get_configured_domains))
+    
+    # If domains exist, show them
+    if [[ ${#existing_domains[@]} -gt 0 ]]; then
+        print_success "Currently configured domains:"
+        for i in "${!existing_domains[@]}"; do
+            echo "  $((i+1)). ${existing_domains[$i]}"
+        done
+        echo ""
+        
+        # Ask if user wants to use existing or add new
+        local choice=""
+        while [[ -z "$choice" ]]; do
+            read -p "Select domain (number) or press Enter to add new domain: " choice
+            
+            # If empty, add new domain
+            if [[ -z "$choice" ]]; then
+                choice="new"
+                break
+            fi
+            
+            # If number, validate and select
+            if [[ "$choice" =~ ^[0-9]+$ ]]; then
+                local idx=$((choice - 1))
+                if [[ $idx -ge 0 && $idx -lt ${#existing_domains[@]} ]]; then
+                    echo "${existing_domains[$idx]}"
+                    return
+                else
+                    print_error "Invalid selection"
+                    choice=""
+                fi
+            else
+                print_error "Please enter a number or leave blank for new domain"
+                choice=""
+            fi
+        done
+    fi
+
+    # Prompt for new domain
     local domain=""
     while [[ -z "$domain" ]]; do
         read -p "Enter your domain name (e.g., fermm.example.com): " domain
