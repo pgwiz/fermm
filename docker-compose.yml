@@ -1,34 +1,27 @@
 services:
   fermm-server:
-    # Uncomment one of the following:
-    # Option 1: Build locally
-    build:
-      context: .
-      dockerfile: fermm-server/Dockerfile
-    
-    # Option 2: Pull from Docker Hub (replace with your version tag)
-    # image: popox15/fermm-server:latest
-    
+    # Use Docker Hub image (production)
+    image: popox15/fermm-server:latest
     container_name: fermm-server
     restart: unless-stopped
     environment:
-      - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD:-fermm}@postgres:5432/fermm
-      - FERMM_JWT_SECRET=${JWT_SECRET:-change-me-in-production}
-      - FERMM_ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - FERMM_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD}@fermm-postgres:5432/fermm
+      - FERMM_JWT_SECRET=${JWT_SECRET}
+      - FERMM_ADMIN_USERNAME=${ADMIN_USERNAME}
+      - FERMM_ADMIN_PASSWORD=${ADMIN_PASSWORD}
     depends_on:
-      postgres:
+      fermm-postgres:
         condition: service_healthy
     networks:
       - fermm-network
 
-  postgres:
+  fermm-postgres:
     image: postgres:16-alpine
     container_name: fermm-postgres
     restart: unless-stopped
     environment:
       - POSTGRES_USER=fermm
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fermm}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=fermm
     volumes:
       - postgres_data:/var/lib/postgresql/data

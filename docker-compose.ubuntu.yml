@@ -14,15 +14,15 @@ services:
       - "8000:8000"
     environment:
       # Database configuration
-      - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD:-fermm}@fermm-postgres:5432/fermm
+      - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD}@fermm-postgres:5432/fermm
       # Security
-      - FERMM_JWT_SECRET=${JWT_SECRET:-change-me-in-production}
+      - FERMM_JWT_SECRET=${JWT_SECRET}
       # Admin credentials
-      - FERMM_ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - FERMM_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - FERMM_ADMIN_USERNAME=${ADMIN_USERNAME}
+      - FERMM_ADMIN_PASSWORD=${ADMIN_PASSWORD}
       # Logging
-      - FERMM_LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - FERMM_DEBUG=${DEBUG:-false}
+      - FERMM_LOG_LEVEL=${LOG_LEVEL}
+      - FERMM_DEBUG=${DEBUG}
     depends_on:
       fermm-postgres:
         condition: service_healthy
@@ -46,7 +46,7 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=fermm
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-fermm}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=fermm
       - POSTGRES_INITDB_ARGS=-c shared_buffers=256MB -c max_connections=200
     volumes:
