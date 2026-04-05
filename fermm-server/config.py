@@ -1,10 +1,15 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field, AliasChoices
 from functools import lru_cache
+from typing import Optional
 
 
 class Settings(BaseSettings):
     # Database - read from environment variables directly
-    database_url: str = None
+    database_url: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("DATABASE_URL", "FERMM_DATABASE_URL"),
+    )
     postgres_user: str = "fermm"
     postgres_password: str = "fermm"
     postgres_host: str = "fermm-postgres"
@@ -12,13 +17,22 @@ class Settings(BaseSettings):
     postgres_db: str = "fermm"
     
     # JWT
-    jwt_secret: str = "change-me-in-production"
+    jwt_secret: str = Field(
+        default="change-me-in-production",
+        validation_alias=AliasChoices("JWT_SECRET", "FERMM_JWT_SECRET"),
+    )
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60
     
     # Admin
-    admin_username: str = "admin"
-    admin_password: str = "admin"
+    admin_username: str = Field(
+        default="admin",
+        validation_alias=AliasChoices("ADMIN_USERNAME", "FERMM_ADMIN_USERNAME"),
+    )
+    admin_password: str = Field(
+        default="admin",
+        validation_alias=AliasChoices("ADMIN_PASSWORD", "FERMM_ADMIN_PASSWORD"),
+    )
     
     # Server
     host: str = "0.0.0.0"

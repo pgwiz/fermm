@@ -7,6 +7,11 @@ services:
     container_name: fermm-server
     restart: unless-stopped
     env_file: .env
+    environment:
+      - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD}@fermm-postgres:5432/fermm
+      - FERMM_JWT_SECRET=${JWT_SECRET}
+      - FERMM_ADMIN_USERNAME=${ADMIN_USERNAME}
+      - FERMM_ADMIN_PASSWORD=${ADMIN_PASSWORD}
     depends_on:
       fermm-postgres:
         condition: service_healthy
