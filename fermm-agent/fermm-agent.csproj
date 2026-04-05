@@ -8,7 +8,12 @@
     <AssemblyName>fermm-agent</AssemblyName>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <PublishTrimmed>false</PublishTrimmed>
+    <PublishTrimmed>true</PublishTrimmed>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <TrimMode>link</TrimMode>
+    <IlcOptimizeSize>true</IlcOptimizeSize>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +26,8 @@
     <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
     <PackageReference Include="System.Windows.Forms" Version="4.0.0" />
+    <!-- Trim config to avoid issues with reflection -->
+    <TrimmerRootAssembly Include="FermmAgent" />
   </ItemGroup>
   
   <!-- Copy private key to output directory -->
