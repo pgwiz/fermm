@@ -305,14 +305,14 @@ check_ports_available() {
 
     print_section "Port Status"
 
-    if netstat -tuln 2>/dev/null | grep -q ":$http_port "; then
+    if netstat -tuln 2>/dev/null | grep -qE ":[0-9]*$http_port "; then
         print_warning "Port $http_port is in use - showing process:"
         lsof -i :$http_port 2>/dev/null || true
     else
         print_success "Port $http_port is available"
     fi
 
-    if netstat -tuln 2>/dev/null | grep -q ":$https_port "; then
+    if netstat -tuln 2>/dev/null | grep -qE ":[0-9]*$https_port "; then
         print_warning "Port $https_port is in use"
     else
         print_success "Port $https_port is available"
@@ -326,8 +326,10 @@ generate_nginx_config() {
     local http_port=$2
     local https_port=$3
     local use_ssl=$4
+    local temp_file="/tmp/nginx_$$.conf"
 
-    cat > "$NGINX_CONF" <<'EOF'
+    # Generate base config
+    cat > "$temp_file" <<EOF
 user nginx;
 worker_processes auto;
 error_log /var/log/nginx/error.log warn;
@@ -341,9 +343,9 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                    '$status $body_bytes_sent "$http_referer" '
-                    '"$http_user_agent" "$http_x_forwarded_for"';
+    log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                    '\$status \$body_bytes_sent "\$http_referer" '
+                    '"\$http_user_agent" "\$http_x_forwarded_for"';
 
     access_log /var/log/nginx/access.log main;
 
@@ -354,168 +356,115 @@ http {
     types_hash_max_size 2048;
     client_max_body_size 20M;
 
-    # Gzip compression
     gzip on;
     gzip_vary on;
     gzip_proxied any;
     gzip_comp_level 6;
-    gzip_types text/plain text/css text/xml text/javascript 
-               application/json application/javascript application/xml+rss 
-               application/rss+xml font/truetype font/opentype 
-               application/vnd.ms-fontobject image/svg+xml;
+    gzip_types text/plain text/css text/xml text/javascript application/json application/javascript application/xml+rss application/rss+xml font/truetype font/opentype application/vnd.ms-fontobject image/svg+xml;
 
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=general:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
+    limit_req_zone \$binary_remote_addr zone=general:10m rate=10r/s;
+    limit_req_zone \$binary_remote_addr zone=api:10m rate=30r/s;
 
-    # Upstream to FERMM backend
     upstream fermm_backend {
         server fermm-server:8000;
     }
 
-    # HTTP server - redirect to HTTPS if SSL enabled
     server {
-        listen PORT_HTTP;
-        server_name DOMAIN_NAME www.DOMAIN_NAME _;
+        listen ${http_port};
+        server_name ${domain} www.${domain} _;
 
-        # Certbot challenge directory
         location /.well-known/acme-challenge/ {
             root /var/www/certbot;
         }
 
-        # Redirect to HTTPS if configured
-        SSL_REDIRECT
+        $(if [[ "$use_ssl" == "true" ]]; then echo "return 301 https://\$server_name\$request_uri;"; fi)
 
-        # Root route to FERMM API
         location / {
             limit_req zone=general burst=20 nodelay;
-            
             proxy_pass http://fermm_backend;
             proxy_http_version 1.1;
-            
-            # Headers
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_set_header X-Forwarded-Host $host;
-            proxy_set_header X-Forwarded-Port $server_port;
-            
-            # WebSocket support
-            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
-            
-            # Timeouts
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
         }
 
-        # API routes with stricter rate limiting
         location /api/ {
             limit_req zone=api burst=50 nodelay;
-            
             proxy_pass http://fermm_backend;
             proxy_http_version 1.1;
-            
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
         }
 
-        # WebSocket endpoint
         location /ws {
             proxy_pass http://fermm_backend;
             proxy_http_version 1.1;
-            
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-            
-            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+            proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
-            
             proxy_read_timeout 3600s;
             proxy_send_timeout 3600s;
         }
 
-        # Health check endpoint
         location /health {
             access_log off;
             proxy_pass http://fermm_backend;
             proxy_http_version 1.1;
-            proxy_set_header Host $host;
+            proxy_set_header Host \$host;
         }
 
-        # Deny access to sensitive files
         location ~ /\. {
             deny all;
             access_log off;
             log_not_found off;
         }
     }
-
-    # HTTPS server (if SSL enabled)
-    SSL_SERVER_BLOCK
-}
 EOF
 
-    # Replace placeholders
-    sed -i "s|PORT_HTTP|${http_port}|g" "$NGINX_CONF"
-    sed -i "s|DOMAIN_NAME|${domain}|g" "$NGINX_CONF"
-
+    # Add HTTPS block if SSL enabled
     if [[ "$use_ssl" == "true" ]]; then
-        # Add HTTPS redirect
-        sed -i "s|# Redirect to HTTPS if configured|return 301 https://\$server_name\$request_uri;|g" "$NGINX_CONF"
+        cat >> "$temp_file" <<EOF
 
-        # Add HTTPS server block
-        local https_block=$(cat <<HTTPS_EOF
-    # HTTPS server with SSL
     server {
         listen ${https_port} ssl http2;
         server_name ${domain} www.${domain};
 
-        # SSL certificates
         ssl_certificate /etc/letsencrypt/live/${domain}/fullchain.pem;
         ssl_certificate_key /etc/letsencrypt/live/${domain}/privkey.pem;
-        ssl_trusted_certificate /etc/letsencrypt/live/${domain}/chain.pem;
-
-        # SSL configuration
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_ciphers HIGH:!aNULL:!MD5;
         ssl_prefer_server_ciphers on;
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 10m;
 
-        # HSTS
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
-        add_header X-XSS-Protection "1; mode=block" always;
-        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
         location / {
             limit_req zone=general burst=20 nodelay;
-            
             proxy_pass http://fermm_backend;
             proxy_http_version 1.1;
-            
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto \$scheme;
-            proxy_set_header X-Forwarded-Host \$host;
-            proxy_set_header X-Forwarded-Port \$server_port;
-            
             proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
-            
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
@@ -523,15 +472,12 @@ EOF
 
         location /api/ {
             limit_req zone=api burst=50 nodelay;
-            
             proxy_pass http://fermm_backend;
             proxy_http_version 1.1;
-            
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto \$scheme;
-            
             proxy_connect_timeout 60s;
             proxy_send_timeout 60s;
             proxy_read_timeout 60s;
@@ -540,15 +486,12 @@ EOF
         location /ws {
             proxy_pass http://fermm_backend;
             proxy_http_version 1.1;
-            
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto \$scheme;
-            
             proxy_set_header Upgrade \$http_upgrade;
             proxy_set_header Connection "upgrade";
-            
             proxy_read_timeout 3600s;
             proxy_send_timeout 3600s;
         }
@@ -566,12 +509,15 @@ EOF
             log_not_found off;
         }
     }
-HTTPS_EOF
-)
-        sed -i "s|# HTTPS server (if SSL enabled)|$https_block|g" "$NGINX_CONF"
-    else
-        sed -i '/# HTTPS server (if SSL enabled)/d' "$NGINX_CONF"
+EOF
     fi
+
+    # Close http block
+    echo "}" >> "$temp_file"
+
+    # Copy to target
+    cp "$temp_file" "$NGINX_CONF"
+    rm "$temp_file"
 }
 
 update_docker_compose() {
