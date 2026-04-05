@@ -18,15 +18,19 @@ Self-hosted, multiplatform Remote Management system. Your own private RMM.
 
 For detailed documentation, see the [md/](md/) folder.
 
-### Configure Domain (Port 80/443)
+### Configure Domain
 
 ```bash
-# Option 1: If port 80/443 available
+# Quick setup (recommended for most cases)
+sudo bash scripts/quick-domain.sh
+
+# OR if port 80/443 available
 sudo bash scripts/setup-domain.sh
 
-# Option 2: If port 80/443 in use (system nginx) OR script fails
-# Follow manual guide: md/MANUAL-DOMAIN-SETUP.md
-# (More reliable, no script escaping issues)
+# OR manual setup (see md/MANUAL-DOMAIN-SETUP.md)
+# - For full control
+# - If scripts don't work
+# - Multiple domains
 ```
 
 ### Deploy Server (Docker)
