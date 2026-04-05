@@ -63,7 +63,7 @@ get_configured_domains() {
         domains+=$(grep 'server_name' "$NGINX_CONF" 2>/dev/null | \
             grep -v '^#' | \
             sed 's/.*server_name\s*//g' | \
-            sed 's/;.*//' | \
+            sed 's/[;#].*//' | \
             tr ' ' '\n' | \
             grep -v '^_$' | \
             grep -v '^www\.' | \
@@ -73,10 +73,12 @@ get_configured_domains() {
     # Check system nginx configs (existing domains on server)
     if [[ -d /etc/nginx/sites-enabled ]]; then
         domains+=$'\n'
+        # Use grep -r which includes filename prefix, so strip it with cut
         domains+=$(grep -r 'server_name' /etc/nginx/sites-enabled 2>/dev/null | \
+            cut -d: -f2- | \
             grep -v '^#' | \
             sed 's/.*server_name\s*//g' | \
-            sed 's/;.*//' | \
+            sed 's/[;#].*//' | \
             tr ' ' '\n' | \
             grep -v '^_$' | \
             grep -v '^www\.' | \
