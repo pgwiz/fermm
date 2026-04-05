@@ -10,34 +10,36 @@ Self-hosted, multiplatform Remote Management system. Your own private RMM.
 
 ## Quick Start
 
+**New?** Follow these 3 steps:
+
+1. **Read**: [setup.md](setup.md) — 5-minute first-run guide
+2. **Deploy**: `docker-compose up -d`
+3. **Access**: http://your-server-ip
+
+For detailed documentation, see the [md/](md/) folder.
+
 ### Deploy Server (Docker)
 
 **On your VPS/Ubuntu server:**
 
 ```bash
-# Pull latest image from Docker Hub
-docker pull popox15/fermm-server:latest
+# Clone repository
+git clone https://github.com/pgwiz/fermm.git
+cd fermm
 
-# Create project directory
-mkdir -p ~/fermm
-cd ~/fermm
+# Copy .env.example and edit with your secrets
+cp .env.example .env
+nano .env  # Change passwords!
 
-# Create .env
-cat > .env << 'EOF'
-POSTGRES_PASSWORD=secure_password_here
-JWT_SECRET=your_jwt_secret_min_32_chars
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=secure_password_here
-EOF
-
-chmod 600 .env
-
-# Create docker-compose.yml (see UBUNTU-DEPLOYMENT-GUIDE.md)
-# Then start:
+# Start all services
 docker-compose up -d
+
+# Verify
+docker-compose ps
+curl http://localhost:8000
 ```
 
-See [UBUNTU-DEPLOYMENT-GUIDE.md](UBUNTU-DEPLOYMENT-GUIDE.md) for detailed instructions.
+**See** [setup.md](setup.md) **for 5-minute setup** or [md/UBUNTU-DEPLOYMENT-GUIDE.md](md/UBUNTU-DEPLOYMENT-GUIDE.md) **for detailed instructions.**
 
 ### Install Agent
 
@@ -95,7 +97,17 @@ systemctl enable --now fermm-agent
   - Always on top (HWND_TOPMOST)
   - Not captured by screenshot tools
 
-See [PHASE-6-OVERLAY-COMPLETE.md](PHASE-6-OVERLAY-COMPLETE.md) for overlay details.
+See [md/PHASE-6-OVERLAY-COMPLETE.md](md/PHASE-6-OVERLAY-COMPLETE.md) for overlay details.
+
+## Documentation
+
+All guides are in the [md/](md/) folder:
+- **[setup.md](setup.md)** — Quick 5-minute setup (start here!)
+- [md/UBUNTU-DEPLOYMENT-GUIDE.md](md/UBUNTU-DEPLOYMENT-GUIDE.md) — Detailed server setup
+- [md/DOCKER-IMAGE-CONTENTS.md](md/DOCKER-IMAGE-CONTENTS.md) — What's in the Docker image
+- [md/DEPLOYMENT-CHECKLIST.md](md/DEPLOYMENT-CHECKLIST.md) — Testing & go/no-go
+- [md/PHASE-6-OVERLAY-COMPLETE.md](md/PHASE-6-OVERLAY-COMPLETE.md) — Overlay architecture
+- [md/INDEX.md](md/INDEX.md) — Documentation index
 
 ## Environment Variables
 
