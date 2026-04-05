@@ -1,6 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.IO.Compression;
 using System.Threading.Tasks;
 using Microsoft.Win32;
 using FermmMiniInstaller.Models;
@@ -16,7 +18,7 @@ namespace FermmMiniInstaller.Services
             "Microlens"
         );
 
-        public async Task InstallAsync(string agentExePath)
+        public async Task InstallAsync(string agentBundlePath)
         {
             try
             {
@@ -27,10 +29,32 @@ namespace FermmMiniInstaller.Services
                 string logsPath = Path.Combine(_installPath, "logs");
                 Directory.CreateDirectory(logsPath);
 
-                // Copy agent executable
-                ProgressChanged?.Invoke("Installing agent...");
                 string targetAgentPath = Path.Combine(_installPath, "fermm-agent.exe");
-                File.Copy(agentExePath, targetAgentPath, overwrite: true);
+
+                if (string.Equals(Path.GetExtension(agentBundlePath), ".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Extract agent bundle
+                    ProgressChanged?.Invoke("Extracting agent bundle...");
+                    ZipFile.ExtractToDirectory(agentBundlePath, _installPath, overwriteFiles: true);
+
+                    if (!File.Exists(targetAgentPath))
+                    {
+                        string? foundAgent = Directory
+                            .GetFiles(_installPath, "fermm-agent.exe", SearchOption.AllDirectories)
+                            .FirstOrDefault();
+
+                        if (foundAgent != null && !string.Equals(foundAgent, targetAgentPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            File.Copy(foundAgent, targetAgentPath, overwrite: true);
+                        }
+                    }
+                }
+                else
+                {
+                    // Copy agent executable
+                    ProgressChanged?.Invoke("Installing agent...");
+                    File.Copy(agentBundlePath, targetAgentPath, overwrite: true);
+                }
 
                 // Copy this installer for future updates
                 ProgressChanged?.Invoke("Setting up updater...");

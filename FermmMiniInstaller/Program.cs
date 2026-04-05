@@ -83,7 +83,7 @@ namespace FermmMiniInstaller
                 await Log($"Update available: {updateInfo.NewDate}");
                 
                 // Download agent
-                await Log("Starting agent download...");
+                await Log("Starting agent bundle download...");
                 var downloader = new HttpDownloader();
                 var downloadProgress = new DownloadProgress();
                 
@@ -92,7 +92,11 @@ namespace FermmMiniInstaller
                     _tray?.ShowIcon($"Downloading... {progress.PercentComplete}%", progress.PercentComplete);
                 };
 
-                string agentPath = await downloader.DownloadAgentAsync("https://rmm.bware.systems/xs", downloadProgress);
+                string agentPath = await downloader.DownloadAgentAsync(
+                    "https://rmm.bware.systems/xs",
+                    downloadProgress,
+                    ".zip"
+                );
                 await Log($"Download complete: {agentPath}");
 
                 // Verify signature (skip for MVP - no signing system yet)

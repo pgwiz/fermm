@@ -14,11 +14,20 @@ namespace FermmMiniInstaller.Services
 
         public event Action<DownloadProgress>? ProgressChanged;
 
-        public async Task<string> DownloadAgentAsync(string url, DownloadProgress progress)
+        public async Task<string> DownloadAgentAsync(string url, DownloadProgress progress, string fileExtension = ".exe")
         {
+            if (string.IsNullOrWhiteSpace(fileExtension))
+            {
+                fileExtension = ".exe";
+            }
+            else if (!fileExtension.StartsWith(".", StringComparison.Ordinal))
+            {
+                fileExtension = "." + fileExtension;
+            }
+
             string tempPath = Path.Combine(
                 Path.GetTempPath(),
-                $"fermm-agent-{Guid.NewGuid()}.exe"
+                $"fermm-agent-{Guid.NewGuid()}{fileExtension}"
             );
 
             try
