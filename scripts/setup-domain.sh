@@ -149,6 +149,13 @@ prompt_domain() {
     # Get already configured domains
     local -a existing_domains=($(get_configured_domains))
     
+    # Debug: Show what was found
+    if [[ ${#existing_domains[@]} -eq 0 ]]; then
+        print_warning "Debug: No domains found in nginx config"
+        print_warning "Checked: $NGINX_CONF and /etc/nginx/sites-enabled/"
+        echo ""
+    fi
+    
     # If domains exist, show them
     if [[ ${#existing_domains[@]} -gt 0 ]]; then
         print_success "Currently configured domains:"
