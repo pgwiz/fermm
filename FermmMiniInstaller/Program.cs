@@ -50,10 +50,27 @@ namespace FermmMiniInstaller
                     _tray.ShowIcon("Initializing...", 0);
                 }
 
-                // Check for updates
-                await Log("Checking for updates from Vercel...");
-                var verifier = new VerificationService();
-                var updateInfo = await verifier.CheckForUpdateAsync();
+                // Check for updates (skip if not installed yet)
+                string installRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Microlens"
+                );
+                string configPath = Path.Combine(installRoot, "config.json");
+                string existingAgentPath = Path.Combine(installRoot, "fermm-agent.exe");
+                bool isInstalled = File.Exists(configPath) && File.Exists(existingAgentPath);
+
+                UpdateInfo updateInfo;
+                if (!isInstalled)
+                {
+                    await Log("Initial install detected (missing config or agent). Skipping update check.");
+                    updateInfo = new UpdateInfo { NeedsUpdate = true };
+                }
+                else
+                {
+                    await Log("Checking for updates from Vercel...");
+                    var verifier = new VerificationService();
+                    updateInfo = await verifier.CheckForUpdateAsync();
+                }
 
                 if (!updateInfo.NeedsUpdate)
                 {
