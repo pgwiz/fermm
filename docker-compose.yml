@@ -6,11 +6,7 @@ services:
     image: popox15/fermm-server:latest
     container_name: fermm-server
     restart: unless-stopped
-    environment:
-      - FERMM_DATABASE_URL=postgresql+asyncpg://fermm:${POSTGRES_PASSWORD}@fermm-postgres:5432/fermm
-      - FERMM_JWT_SECRET=${JWT_SECRET}
-      - FERMM_ADMIN_USERNAME=${ADMIN_USERNAME}
-      - FERMM_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    env_file: .env
     depends_on:
       fermm-postgres:
         condition: service_healthy

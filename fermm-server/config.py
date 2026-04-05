@@ -3,8 +3,13 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Database
-    database_url: str = "postgresql+asyncpg://fermm:fermm@localhost:5432/fermm"
+    # Database - read from environment variables directly
+    database_url: str = None
+    postgres_user: str = "fermm"
+    postgres_password: str = "fermm"
+    postgres_host: str = "fermm-postgres"
+    postgres_port: int = 5432
+    postgres_db: str = "fermm"
     
     # JWT
     jwt_secret: str = "change-me-in-production"
@@ -20,8 +25,17 @@ class Settings(BaseSettings):
     port: int = 8000
     
     class Config:
-        env_file = ".env"
-        env_prefix = "FERMM_"
+        # Read from environment variables directly
+        case_sensitive = False
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # If DATABASE_URL not provided, build it from components
+        if not self.database_url:
+            self.database_url = (
+                f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+                f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            )
 
 
 @lru_cache
