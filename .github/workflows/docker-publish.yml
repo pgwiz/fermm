@@ -10,7 +10,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -56,3 +56,28 @@ jobs:
       - name: Image digest
         if: github.event_name != 'pull_request'
         run: echo "Image pushed: ${{ steps.meta.outputs.tags }}"
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          body: |
+            ## Docker Image
+            
+            **Available as:**
+            - `${{ secrets.DOCKER_USERNAME }}/fermm-server:${{ github.ref_name }}`
+            - `${{ secrets.DOCKER_USERNAME }}/fermm-server:latest`
+            
+            **Usage:**
+            ```bash
+            docker pull ${{ secrets.DOCKER_USERNAME }}/fermm-server:${{ github.ref_name }}
+            ```
+            
+            Or in `docker-compose.yml`:
+            ```yaml
+            services:
+              fermm-server:
+                image: ${{ secrets.DOCKER_USERNAME }}/fermm-server:${{ github.ref_name }}
+            ```
+
