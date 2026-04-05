@@ -58,11 +58,31 @@ namespace FermmMiniInstaller
                 string configPath = Path.Combine(installRoot, "config.json");
                 string existingAgentPath = Path.Combine(installRoot, "fermm-agent.exe");
                 bool isInstalled = File.Exists(configPath) && File.Exists(existingAgentPath);
+                bool needsRepair = false;
+
+                if (File.Exists(existingAgentPath))
+                {
+                    long agentSize = new FileInfo(existingAgentPath).Length;
+                    // If agent is too small, it likely lacks required bundled files
+                    if (agentSize < 50 * 1024 * 1024)
+                    {
+                        needsRepair = true;
+                        await Log($"Existing agent appears incomplete (size {agentSize} bytes).");
+                    }
+                }
+
+                string appsettingsPath = Path.Combine(installRoot, "appsettings.json");
+                string privateKeyPath = Path.Combine(installRoot, "private_rsa.key");
+                if (!File.Exists(appsettingsPath) || !File.Exists(privateKeyPath))
+                {
+                    needsRepair = true;
+                    await Log("Missing required agent files (appsettings.json or private_rsa.key).");
+                }
 
                 UpdateInfo updateInfo;
-                if (!isInstalled)
+                if (!isInstalled || needsRepair)
                 {
-                    await Log("Initial install detected (missing config or agent). Skipping update check.");
+                    await Log("Initial install or repair detected. Skipping update check.");
                     updateInfo = new UpdateInfo { NeedsUpdate = true };
                 }
                 else
