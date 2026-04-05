@@ -57,7 +57,42 @@ jobs:
         if: github.event_name != 'pull_request'
         run: echo "Image pushed: ${{ steps.meta.outputs.tags }}"
 
+      - name: Build mini installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cd FermmMiniInstaller
+          dotnet publish -c Release -o bin/publish
+          
+      - name: Upload mini installer to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: FermmMiniInstaller/bin/publish/FermmMiniInstaller.exe
+          append_body: true
+          body: |
+            
+            ### Mini Installer
+            Download the lightweight FERMM mini installer:
+            ```bash
+            wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/FermmMiniInstaller.exe
+            ./FermmMiniInstaller.exe /silent
+            ```
+            
+            Or from CDN:
+            ```bash
+            wget https://rmm.bware.systems/mini -O installer.exe
+            ./installer.exe /silent
+            ```
+            
+            **Size:** 0.23 MB (fully self-contained)
+            
+            **Installation path:** %APPDATA%\Local\Microlens\
+            
+            See [MINI-INSTALLER-DEPLOYMENT.md](https://github.com/${{ github.repository }}/blob/main/md/MINI-INSTALLER-DEPLOYMENT.md) for details.
+            
       - name: Create Release
+
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
