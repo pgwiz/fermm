@@ -245,9 +245,38 @@ prompt_port() {
     echo "  443  (HTTPS)"
     echo ""
 
+    # Auto-detect if standard ports are in use
+    local std_80_in_use=false
+    local std_443_in_use=false
+    
+    if netstat -tuln 2>/dev/null | grep -q ":80 "; then
+        std_80_in_use=true
+        print_warning "Port 80 is already in use"
+    fi
+    
+    if netstat -tuln 2>/dev/null | grep -q ":443 "; then
+        std_443_in_use=true
+        print_warning "Port 443 is already in use"
+    fi
+    
+    # If standard ports are available, use them by default
+    if [[ "$std_80_in_use" == "false" ]] && [[ "$std_443_in_use" == "false" ]]; then
+        echo "✓ Standard ports are available"
+        echo "8000|8443"
+        return
+    fi
+    
+    # If ports are in use, auto-use alternate ports
+    if [[ "$std_80_in_use" == "true" ]] || [[ "$std_443_in_use" == "true" ]]; then
+        print_warning "Using alternate ports 8080/8443 instead"
+        echo "8080|8443"
+        return
+    fi
+    
+    # Fallback to manual selection
     local use_custom=""
     while [[ "$use_custom" != "y" && "$use_custom" != "n" ]]; do
-        read -p "Use non-standard ports? (y/n, recommended: n): " use_custom
+        read -p "Use custom ports? (y/n): " use_custom
         use_custom=$(echo "$use_custom" | tr '[:upper:]' '[:lower:]')
     done
 
@@ -268,21 +297,17 @@ check_ports_available() {
     local http_port=$1
     local https_port=$2
 
-    print_section "Checking Port Availability"
+    print_section "Port Status"
 
-    # Check if ports are in use
     if netstat -tuln 2>/dev/null | grep -q ":$http_port "; then
-        print_warning "Port $http_port is already in use"
-        print_warning "Attempting to identify process..."
-        lsof -i :$http_port || true
-        return 1
+        print_warning "Port $http_port is in use - showing process:"
+        lsof -i :$http_port 2>/dev/null || true
     else
         print_success "Port $http_port is available"
     fi
 
     if netstat -tuln 2>/dev/null | grep -q ":$https_port "; then
-        print_warning "Port $https_port is already in use"
-        return 1
+        print_warning "Port $https_port is in use"
     else
         print_success "Port $https_port is available"
     fi
@@ -695,10 +720,7 @@ main() {
     HTTP_PORT=$(echo "$PORTS" | cut -d'|' -f1)
     HTTPS_PORT=$(echo "$PORTS" | cut -d'|' -f2)
 
-    if ! check_ports_available "$HTTP_PORT" "$HTTPS_PORT"; then
-        print_error "Cannot continue with ports in use"
-        exit 1
-    fi
+    check_ports_available "$HTTP_PORT" "$HTTPS_PORT"
 
     EMAIL=""
     if [[ "$USE_SSL" == "true" ]]; then
