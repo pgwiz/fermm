@@ -19,6 +19,10 @@ echo -e "${BLUE}╚════════════════════�
 read -p "Enter domain: " domain
 [ -z "$domain" ] && exit 1
 
+# Ask for backend port
+read -p "Enter backend port (default: 8000): " backend_port
+backend_port=${backend_port:-8000}
+
 # Check if domain already has config
 if [ -f "conf.d/${domain}.conf" ]; then
     read -p "Config for $domain already exists. Overwrite? (y/n): " overwrite
@@ -41,7 +45,7 @@ mkdir -p conf.d
 
 # Generate appropriate config based on SSL status
 if [ "$use_ssl" = "yes" ]; then
-    cat > "conf.d/${domain}.conf" <<'CONFEOF'
+    cat > "conf.d/${domain}.conf" <<CONFEOF
 server {
     listen 8080;
     listen 8443 ssl http2;
@@ -51,28 +55,28 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
     
     location / {
-        proxy_pass http://fermm-server:8000;
+        proxy_pass http://localhost:$backend_port;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 CONFEOF
 else
-    cat > "conf.d/${domain}.conf" <<'CONFEOF'
+    cat > "conf.d/${domain}.conf" <<CONFEOF
 server {
     listen 8080;
     server_name $domain www.$domain;
     
     location / {
-        proxy_pass http://fermm-server:8000;
+        proxy_pass http://localhost:$backend_port;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 CONFEOF
@@ -93,6 +97,7 @@ if [ "$use_ssl" = "yes" ]; then
     echo "   HTTPS: https://${domain}:8443"
 fi
 echo "   HTTP:  http://${domain}:8080"
+echo "   Backend: localhost:${backend_port}"
 echo ""
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 

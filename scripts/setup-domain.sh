@@ -311,12 +311,35 @@ prompt_use_ssl() {
     [[ "$use_ssl" == "y" ]] && echo "true" || echo "false"
 }
 
-prompt_port() {
-    print_section "Port Configuration"
+prompt_backend_port() {
+    print_section "Backend Service Configuration"
+    
+    echo "This domain will reverse-proxy to a backend service."
+    echo "Specify which port your service is running on."
+    echo ""
+    
+    local backend_port=""
+    while [[ -z "$backend_port" ]]; do
+        read -p "Backend port (default: 8000): " backend_port
+        backend_port=${backend_port:-8000}
+        
+        # Basic validation
+        if ! [[ "$backend_port" =~ ^[0-9]+$ ]] || [ "$backend_port" -lt 1 ] || [ "$backend_port" -gt 65535 ]; then
+            print_error "Invalid port number (must be 1-65535)"
+            backend_port=""
+        fi
+    done
+    
+    echo "$backend_port"
+}
 
+prompt_port() {
+    print_section "Nginx Port Configuration"
+
+    echo "Nginx will listen on these ports and route to your backend."
     echo "Current port bindings:"
-    echo "  80   (HTTP)"
-    echo "  443  (HTTPS)"
+    echo "  80   (HTTP, external)"
+    echo "  443  (HTTPS, external)"
     echo ""
 
     # Auto-detect if standard ports are in use
@@ -751,6 +774,9 @@ main() {
             print_warning "No SSL certificate found for this domain"
         fi
     fi
+    
+    # Prompt for backend port (allows multi-service setup)
+    BACKEND_PORT=$(prompt_backend_port)
     
     PORTS=$(prompt_port)
     
