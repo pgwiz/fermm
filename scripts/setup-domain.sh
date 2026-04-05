@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 
 ###############################################################################
 # FERMM Domain Setup Script
@@ -91,8 +91,35 @@ get_configured_domains() {
         done
     fi
     
+    # Check for certificates in /etc/letsencrypt/live (like cert-manager.sh)
+    if [[ -d /etc/letsencrypt/live ]]; then
+        domains+=$'\n'
+        for cert_dir in /etc/letsencrypt/live/*/; do
+            if [[ -d "$cert_dir" ]]; then
+                local domain=$(basename "$cert_dir")
+                if [[ "$domain" != "README" ]]; then
+                    domains+="$domain"$'\n'
+                fi
+            fi
+        done
+    fi
+    
     # Return sorted unique domains
     echo "$domains" | grep -v '^$' | sort -u
+}
+
+check_certificate_exists() {
+    local domain=$1
+    [[ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]] && return 0 || return 1
+}
+
+get_certificate_expiry() {
+    local domain=$1
+    local cert_path="/etc/letsencrypt/live/$domain/fullchain.pem"
+    
+    if [[ -f "$cert_path" ]]; then
+        openssl x509 -in "$cert_path" -noout -enddate | cut -d= -f2
+    fi
 }
 
 check_prerequisites() {
@@ -158,12 +185,33 @@ prompt_domain() {
     local domains_raw=$(get_configured_domains)
     local -a existing_domains=($(echo "$domains_raw" | sort -u))
     
-    # If domains exist, show them
+    # If domains exist, show them with certificate status
     if [[ ${#existing_domains[@]} -gt 0 ]]; then
         print_success "Available domains:"
         echo ""
         for i in "${!existing_domains[@]}"; do
-            printf "   %2d) %s\n" $((i+1)) "${existing_domains[$i]}"
+            local domain="${existing_domains[$i]}"
+            local status=""
+            
+            # Check certificate status
+            if check_certificate_exists "$domain"; then
+                local expiry=$(get_certificate_expiry "$domain")
+                local expiry_epoch=$(date -d "$expiry" +%s 2>/dev/null || echo 0)
+                local current_epoch=$(date +%s)
+                local days_left=$(( ($expiry_epoch - $current_epoch) / 86400 ))
+                
+                if [ $days_left -lt 0 ]; then
+                    status=" ${RED}[EXPIRED]${NC}"
+                elif [ $days_left -lt 30 ]; then
+                    status=" ${YELLOW}[EXPIRING: $days_left days]${NC}"
+                else
+                    status=" ${GREEN}[SSL OK: $days_left days]${NC}"
+                fi
+            else
+                status=" ${YELLOW}[No certificate]${NC}"
+            fi
+            
+            printf "   %2d) %s%b\n" $((i+1)) "$domain" "$status"
         done
         echo ""
         print_success "────────────────────────────────────────"
@@ -234,13 +282,33 @@ prompt_email() {
 prompt_use_ssl() {
     print_section "SSL Setup"
 
+    local domain=$1
+    
+    # Check if certificate already exists
+    if check_certificate_exists "$domain"; then
+        local expiry=$(get_certificate_expiry "$domain")
+        print_success "Found existing SSL certificate for $domain"
+        echo "  Expires: $expiry"
+        echo ""
+        print_success "Your domain already has a valid SSL certificate."
+        echo "No new certificate needed."
+        echo "false"
+        return
+    fi
+    
+    echo "Let's Encrypt SSL certificate enables HTTPS (secure browsing)."
+    echo "This requires:"
+    echo "  1. Port 80 accessible from the internet"
+    echo "  2. Valid domain pointing to this server"
+    echo ""
+
     local use_ssl=""
     while [[ "$use_ssl" != "y" && "$use_ssl" != "n" ]]; do
         read -p "Setup SSL with Let's Encrypt? (y/n): " use_ssl
         use_ssl=$(echo "$use_ssl" | tr '[:upper:]' '[:lower:]')
     done
 
-    [[ "$use_ssl" == "y" ]]
+    [[ "$use_ssl" == "y" ]] && echo "true" || echo "false"
 }
 
 prompt_port() {
@@ -672,10 +740,16 @@ main() {
     
     # Only prompt for SSL on NEW domains
     if [[ "$DOMAIN_TYPE" == "NEW" ]]; then
-        USE_SSL=$(prompt_use_ssl)
+        USE_SSL=$(prompt_use_ssl "$DOMAIN")
     else
         USE_SSL="false"
-        print_success "Using existing domain - skipping SSL setup"
+        print_success "Using existing domain - checking SSL status..."
+        if check_certificate_exists "$DOMAIN"; then
+            local expiry=$(get_certificate_expiry "$DOMAIN")
+            print_success "SSL certificate found, expires: $expiry"
+        else
+            print_warning "No SSL certificate found for this domain"
+        fi
     fi
     
     PORTS=$(prompt_port)
