@@ -75,16 +75,20 @@ get_configured_domains() {
     # Check system nginx configs (existing domains on server)
     if [[ -d /etc/nginx/sites-enabled ]]; then
         domains+=$'\n'
-        # Use grep -r which includes filename prefix, so strip it with cut
-        domains+=$(grep -r 'server_name' /etc/nginx/sites-enabled 2>/dev/null | \
-            cut -d: -f2- | \
-            grep -v '^#' | \
-            sed 's/.*server_name\s*//g' | \
-            sed 's/[;#].*//' | \
-            tr ' ' '\n' | \
-            grep -v '^_$' | \
-            grep -v '^www\.' | \
-            grep -v '^$' || true)
+        # Find all files and grep each one individually (more reliable than grep -r)
+        for file in /etc/nginx/sites-enabled/*; do
+            if [[ -f "$file" ]] && [[ -r "$file" ]]; then
+                grep 'server_name' "$file" 2>/dev/null | \
+                    grep -v '^#' | \
+                    sed 's/.*server_name\s*//g' | \
+                    sed 's/[;#].*//' | \
+                    tr ' ' '\n' | \
+                    grep -v '^_$' | \
+                    grep -v '^www\.' | \
+                    grep -v '^$' || true
+                domains+=$'\n'
+            fi
+        done
     fi
     
     # Return sorted unique domains

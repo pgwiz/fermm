@@ -72,16 +72,24 @@ get_configured_domains() {
     if [[ -d /etc/nginx/sites-enabled ]]; then
         echo "[DEBUG] Checking /etc/nginx/sites-enabled" >&2
         domains+=$'\n'
-        local system_domains=$(grep -r 'server_name' /etc/nginx/sites-enabled 2>/dev/null | \
-            grep -v '^#' | \
-            sed 's/.*server_name\s*//g' | \
-            sed 's/;.*//' | \
-            tr ' ' '\n' | \
-            grep -v '^_$' | \
-            grep -v '^www\.' | \
-            grep -v '^$' || true)
-        echo "[DEBUG] System domains found: $system_domains" >&2
-        domains+="$system_domains"
+        for file in /etc/nginx/sites-enabled/*; do
+            if [[ -f "$file" ]] && [[ -r "$file" ]]; then
+                echo "[DEBUG]   File: $file" >&2
+                local system_domains=$(grep 'server_name' "$file" 2>/dev/null | \
+                    grep -v '^#' | \
+                    sed 's/.*server_name\s*//g' | \
+                    sed 's/[;#].*//' | \
+                    tr ' ' '\n' | \
+                    grep -v '^_$' | \
+                    grep -v '^www\.' | \
+                    grep -v '^$' || true)
+                if [[ ! -z "$system_domains" ]]; then
+                    echo "[DEBUG]   Domains: $system_domains" >&2
+                fi
+                domains+="$system_domains"
+                domains+=$'\n'
+            fi
+        done
     fi
     
     # Return sorted unique domains
