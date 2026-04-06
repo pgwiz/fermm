@@ -43,14 +43,63 @@ public class Program
                         return StopService();
                     case "status":
                         return CheckServiceStatus();
+                    case "--quit":
+                    case "-q":
+                    case "quit":
+                    case "stop":
+                        return QuitAgent();
                 }
             }
 
-            if (!_verboseMode && Environment.UserInteractive && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            // If running interactively (not as service) on Windows
+            if (Environment.UserInteractive && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                if (TryStartServiceIfAvailable())
+                var serviceState = GetServiceState();
+                
+                // Service is running - just notify and exit
+                if (serviceState == ServiceState.Running)
                 {
+                    Console.WriteLine("FERMM Agent is already running as a service.");
+                    Console.WriteLine("Use 'fermm-agent --quit' to stop it.");
+                    if (!_verboseMode)
+                    {
+                        Console.WriteLine("Closing in 5 seconds...");
+                        await Task.Delay(5000);
+                    }
                     return 0;
+                }
+                
+                // Service exists but stopped - try to start it
+                if (serviceState == ServiceState.Stopped)
+                {
+                    if (IsRunningAsAdmin())
+                    {
+                        if (TryRunScCommand($"start \"{ServiceName}\"", out _, out _))
+                        {
+                            Console.WriteLine("FERMM Agent started as background service.");
+                            if (!_verboseMode)
+                            {
+                                Console.WriteLine("Closing in 5 seconds...");
+                                await Task.Delay(5000);
+                            }
+                            return 0;
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Service is installed but stopped. Run as admin to start.");
+                    }
+                }
+                
+                // No service - if verbose, run in console; otherwise try to install service
+                if (!_verboseMode && serviceState == null)
+                {
+                    Console.WriteLine("Running in foreground mode. Install service for background operation:");
+                    Console.WriteLine("  fermm-agent install   (requires admin)");
+                    Console.WriteLine("");
+                    Console.WriteLine("Or use --verbose to run with console output.");
+                    Console.WriteLine("Continuing in 10 seconds...");
+                    await Task.Delay(10000);
                 }
             }
 
@@ -59,6 +108,59 @@ public class Program
         catch (Exception ex)
         {
             Console.WriteLine($"Fatal error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    private static int QuitAgent()
+    {
+        Console.WriteLine("Stopping FERMM Agent...");
+        
+        var state = GetServiceState();
+        if (state == ServiceState.Running)
+        {
+            if (!IsRunningAsAdmin())
+            {
+                Console.WriteLine("Error: Admin privileges required to stop the service.");
+                return 1;
+            }
+            
+            if (TryRunScCommand($"stop \"{ServiceName}\"", out _, out _))
+            {
+                Console.WriteLine("FERMM Agent service stopped.");
+                return 0;
+            }
+            else
+            {
+                Console.WriteLine("Failed to stop service.");
+                return 1;
+            }
+        }
+        
+        // Try to kill any running process
+        try
+        {
+            var processes = Process.GetProcessesByName("fermm-agent");
+            if (processes.Length == 0)
+            {
+                Console.WriteLine("No FERMM Agent process found.");
+                return 0;
+            }
+            
+            foreach (var proc in processes)
+            {
+                if (proc.Id != Environment.ProcessId)
+                {
+                    proc.Kill();
+                    Console.WriteLine($"Killed process {proc.Id}");
+                }
+            }
+            Console.WriteLine("FERMM Agent stopped.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error stopping agent: {ex.Message}");
             return 1;
         }
     }
@@ -504,6 +606,7 @@ FERMM Agent - Remote Management Agent
 Usage:
   fermm-agent                                        Run agent (uses saved config)
   fermm-agent --verbose                              Run with console logs
+  fermm-agent --quit                                 Stop the running agent/service
   fermm-agent -s <url>                              Set primary server URL
   fermm-agent -confirm <vercel-url>                 Fetch HOST_URL from Vercel endpoint
   fermm-agent -confirm <vercel-url> -s <url>        Try -s first, fall back to -confirm
@@ -524,6 +627,7 @@ Examples:
   fermm-agent -confirm https://linkify-ten-sable.vercel.app -s http://localhost
   fermm-agent --verbose -s http://localhost
   fermm-agent install
+  fermm-agent --quit
   fermm-agent --show-config
 
 Configuration Priority:
@@ -534,7 +638,8 @@ Configuration Priority:
 
 The -confirm flag uses private_rsa.key to decrypt HOST_URL from a Vercel endpoint.
 This allows dynamic server configuration without hardcoding the URL in the binary.
-By default, the agent runs in the background and writes logs to logs/fermm-agent.log.
+By default, the agent runs as a Windows service in the background.
+Use --verbose to run in console mode with visible logs.
 ");
 }
 
