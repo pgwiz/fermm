@@ -380,9 +380,10 @@ public class OverlayForm : Form
         // Input area at bottom
         var inputPanel = new Panel
         {
-            Height = 60,
+            Height = 64,
             BackColor = Color.FromArgb(17, 22, 36),
-            Dock = DockStyle.Bottom
+            Dock = DockStyle.Bottom,
+            Padding = new Padding(8)
         };
 
         var inputBox = new TextBox
@@ -402,8 +403,8 @@ public class OverlayForm : Form
         var sendBtn = new Button
         {
             Text = "Send",
-            Size = new Size(50, 25),
-            Location = new Point(8, 33),
+            Width = 70,
+            Dock = DockStyle.Right,
             FlatStyle = FlatStyle.Flat,
             ForeColor = Color.FromArgb(100, 116, 139),
             BackColor = Color.FromArgb(30, 41, 59),

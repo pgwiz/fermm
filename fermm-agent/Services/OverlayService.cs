@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -50,24 +51,28 @@ public class OverlayService
                 return;
             }
 
-            // Start the overlay process
-            var psi = new ProcessStartInfo
+            // Prefer launching in the active user session (service-safe)
+            if (!TryLaunchOverlayInUserSession(agentExe))
             {
-                FileName = agentExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = false,
-                CreateNoWindow = false,
-                Arguments = $"--overlay --device-id {_config.DeviceId}"
-            };
+                // Fallback: direct Process.Start (interactive mode)
+                var psi = new ProcessStartInfo
+                {
+                    FileName = agentExe,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = false,
+                    CreateNoWindow = false,
+                    Arguments = $"--overlay --device-id {_config.DeviceId}"
+                };
 
-            _overlayProcess = Process.Start(psi);
-            if (_overlayProcess == null)
-            {
-                _logger.LogError("Failed to start overlay process");
-                return;
+                _overlayProcess = Process.Start(psi);
+                if (_overlayProcess == null)
+                {
+                    _logger.LogError("Failed to start overlay process");
+                    return;
+                }
             }
 
-            _logger.LogInformation("✅ Overlay spawned with PID {PID}", _overlayProcess.Id);
+            _logger.LogInformation("✅ Overlay spawned with PID {PID}", _overlayProcess?.Id);
 
             // Initialize IPC pipe for messaging
             _ = Task.Run(() => ListenToPipeAsync(ct), ct);
@@ -225,6 +230,177 @@ public class OverlayService
             _logger.LogError(ex, "Error monitoring overlay process");
         }
     }
+
+    private bool TryLaunchOverlayInUserSession(string agentExe)
+    {
+        IntPtr userToken = IntPtr.Zero;
+        IntPtr primaryToken = IntPtr.Zero;
+        IntPtr envBlock = IntPtr.Zero;
+        PROCESS_INFORMATION pi = default;
+
+        try
+        {
+            var sessionId = WTSGetActiveConsoleSessionId();
+            if (sessionId == 0xFFFFFFFF)
+            {
+                _logger.LogWarning("No active user session found for overlay");
+                return false;
+            }
+
+            if (!WTSQueryUserToken(sessionId, out userToken))
+            {
+                _logger.LogWarning("WTSQueryUserToken failed: {Error}", Marshal.GetLastWin32Error());
+                return false;
+            }
+
+            if (!DuplicateTokenEx(
+                    userToken,
+                    TOKEN_ALL_ACCESS,
+                    IntPtr.Zero,
+                    SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation,
+                    TOKEN_TYPE.TokenPrimary,
+                    out primaryToken))
+            {
+                _logger.LogWarning("DuplicateTokenEx failed: {Error}", Marshal.GetLastWin32Error());
+                return false;
+            }
+
+            if (!CreateEnvironmentBlock(out envBlock, primaryToken, false))
+            {
+                _logger.LogWarning("CreateEnvironmentBlock failed: {Error}", Marshal.GetLastWin32Error());
+                envBlock = IntPtr.Zero;
+            }
+
+            var si = new STARTUPINFO
+            {
+                cb = Marshal.SizeOf<STARTUPINFO>(),
+                lpDesktop = @"winsta0\default"
+            };
+
+            var commandLine = $"\"{agentExe}\" --overlay --device-id {_config.DeviceId}";
+            var creationFlags = envBlock != IntPtr.Zero ? CREATE_UNICODE_ENVIRONMENT : 0;
+
+            if (!CreateProcessAsUser(
+                    primaryToken,
+                    null,
+                    commandLine,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    false,
+                    creationFlags,
+                    envBlock,
+                    Path.GetDirectoryName(agentExe),
+                    ref si,
+                    out pi))
+            {
+                _logger.LogWarning("CreateProcessAsUser failed: {Error}", Marshal.GetLastWin32Error());
+                return false;
+            }
+
+            _overlayProcess = Process.GetProcessById((int)pi.dwProcessId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to launch overlay in user session");
+            return false;
+        }
+        finally
+        {
+            if (pi.hThread != IntPtr.Zero) CloseHandle(pi.hThread);
+            if (pi.hProcess != IntPtr.Zero) CloseHandle(pi.hProcess);
+            if (envBlock != IntPtr.Zero) DestroyEnvironmentBlock(envBlock);
+            if (primaryToken != IntPtr.Zero) CloseHandle(primaryToken);
+            if (userToken != IntPtr.Zero) CloseHandle(userToken);
+        }
+    }
+
+    private const int CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+    private const uint TOKEN_ALL_ACCESS = 0xF01FF;
+
+    private enum SECURITY_IMPERSONATION_LEVEL
+    {
+        SecurityAnonymous,
+        SecurityIdentification,
+        SecurityImpersonation,
+        SecurityDelegation
+    }
+
+    private enum TOKEN_TYPE
+    {
+        TokenPrimary = 1,
+        TokenImpersonation
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct STARTUPINFO
+    {
+        public int cb;
+        public string? lpReserved;
+        public string? lpDesktop;
+        public string? lpTitle;
+        public int dwX;
+        public int dwY;
+        public int dwXSize;
+        public int dwYSize;
+        public int dwXCountChars;
+        public int dwYCountChars;
+        public int dwFillAttribute;
+        public int dwFlags;
+        public short wShowWindow;
+        public short cbReserved2;
+        public IntPtr lpReserved2;
+        public IntPtr hStdInput;
+        public IntPtr hStdOutput;
+        public IntPtr hStdError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PROCESS_INFORMATION
+    {
+        public IntPtr hProcess;
+        public IntPtr hThread;
+        public uint dwProcessId;
+        public uint dwThreadId;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WTSGetActiveConsoleSessionId();
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    private static extern bool WTSQueryUserToken(uint sessionId, out IntPtr token);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool DuplicateTokenEx(
+        IntPtr hExistingToken,
+        uint dwDesiredAccess,
+        IntPtr lpTokenAttributes,
+        SECURITY_IMPERSONATION_LEVEL impersonationLevel,
+        TOKEN_TYPE tokenType,
+        out IntPtr phNewToken);
+
+    [DllImport("userenv.dll", SetLastError = true)]
+    private static extern bool CreateEnvironmentBlock(out IntPtr lpEnvironment, IntPtr hToken, bool bInherit);
+
+    [DllImport("userenv.dll", SetLastError = true)]
+    private static extern bool DestroyEnvironmentBlock(IntPtr lpEnvironment);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool CreateProcessAsUser(
+        IntPtr hToken,
+        string? lpApplicationName,
+        string lpCommandLine,
+        IntPtr lpProcessAttributes,
+        IntPtr lpThreadAttributes,
+        bool bInheritHandles,
+        int dwCreationFlags,
+        IntPtr lpEnvironment,
+        string? lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
 
     public bool IsRunning => _overlayProcess?.HasExited == false;
 

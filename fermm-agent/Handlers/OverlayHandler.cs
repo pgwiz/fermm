@@ -29,14 +29,14 @@ public class OverlayHandler
             var root = options.RootElement;
 
             var action = root.TryGetProperty("action", out var actionElem) 
-                ? actionElem.GetString() 
-                : null;
+                ? actionElem.GetString()?.ToLowerInvariant() 
+                : "spawn";
 
             return action switch
             {
-                "spawn" => await HandleSpawnAsync(root, cmd, ct),
-                "close" => await HandleCloseAsync(cmd, ct),
-                "send_message" => await HandleSendMessageAsync(root, cmd, ct),
+                "spawn" or "open" or "show" => await HandleSpawnAsync(root, cmd, ct),
+                "close" or "hide" or "dismiss" => await HandleCloseAsync(cmd, ct),
+                "send_message" or "send" or "message" => await HandleSendMessageAsync(root, cmd, ct),
                 _ => new CommandResult(
                     cmd.CommandId,
                     _config.DeviceId,
