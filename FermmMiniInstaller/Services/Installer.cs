@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.Json;
 using System.IO.Compression;
 using System.Threading.Tasks;
 using Microsoft.Win32;
+using System.Security.Principal;
 using FermmMiniInstaller.Models;
 
 namespace FermmMiniInstaller.Services
@@ -13,6 +15,7 @@ namespace FermmMiniInstaller.Services
     {
         public event Action<string>? ProgressChanged;
 
+        private const string ServiceName = "FERMMAgent";
         private readonly string _installPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Microlens"
@@ -70,9 +73,17 @@ namespace FermmMiniInstaller.Services
                 ProgressChanged?.Invoke("Writing config...");
                 await WriteConfigAsync();
 
-                // Set Windows startup registry key
-                ProgressChanged?.Invoke("Setting auto-start...");
-                SetAutoStart(targetAgentPath);
+                // Prefer Windows service for auto-start (falls back to Run key)
+                var serviceInstalled = TryEnsureService(targetAgentPath);
+                if (!serviceInstalled)
+                {
+                    ProgressChanged?.Invoke("Setting auto-start...");
+                    SetAutoStart(targetAgentPath);
+                }
+                else
+                {
+                    RemoveAutoStart();
+                }
 
                 ProgressChanged?.Invoke("Complete!");
                 await Task.Delay(1000);
@@ -115,7 +126,136 @@ namespace FermmMiniInstaller.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Failed to set auto-start: {ex.Message}");
+                ProgressChanged?.Invoke($"Failed to set auto-start: {ex.Message}");
+            }
+        }
+
+        private void RemoveAutoStart()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true))
+                {
+                    if (key?.GetValue("FermmAgent") != null)
+                    {
+                        key.DeleteValue("FermmAgent", throwOnMissingValue: false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ProgressChanged?.Invoke($"Failed to remove auto-start key: {ex.Message}");
+            }
+        }
+
+        private bool TryEnsureService(string agentPath)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return false;
+            }
+
+            if (IsServiceInstalled())
+            {
+                ProgressChanged?.Invoke("Service already installed. Ensuring auto-start...");
+                TryRunProcess("sc", $"config \"{ServiceName}\" start= auto");
+                TryStartService();
+                return true;
+            }
+
+            if (!IsRunningAsAdmin())
+            {
+                ProgressChanged?.Invoke("Service install requires admin. Falling back to user startup.");
+                return false;
+            }
+
+            ProgressChanged?.Invoke("Installing Windows service...");
+            if (!TryRunProcess(agentPath, "install"))
+            {
+                ProgressChanged?.Invoke("Service install failed. Falling back to user startup.");
+                return false;
+            }
+
+            TryStartService();
+            return true;
+        }
+
+        private bool IsServiceInstalled()
+        {
+            return TryRunProcess("sc", $"query \"{ServiceName}\"");
+        }
+
+        private void TryStartService()
+        {
+            if (!IsRunningAsAdmin())
+            {
+                ProgressChanged?.Invoke("Service installed, but admin is required to start it now.");
+                return;
+            }
+
+            TryRunProcess("sc", $"start \"{ServiceName}\"");
+        }
+
+        private bool IsRunningAsAdmin()
+        {
+            try
+            {
+                var identity = WindowsIdentity.GetCurrent();
+                var principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            }
+            catch (Exception ex)
+            {
+                ProgressChanged?.Invoke($"Failed to check admin rights: {ex.Message}");
+                return false;
+            }
+        }
+
+        private bool TryRunProcess(string fileName, string arguments)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process == null)
+                {
+                    ProgressChanged?.Invoke($"Failed to start process: {fileName}");
+                    return false;
+                }
+
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    return true;
+                }
+
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
+                var message = string.Join(" ", new[] { output, error }
+                    .Where(s => !string.IsNullOrWhiteSpace(s)))
+                    .Trim();
+
+                ProgressChanged?.Invoke(string.IsNullOrWhiteSpace(message)
+                    ? $"Command failed: {fileName} {arguments}"
+                    : message);
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                ProgressChanged?.Invoke($"Process error: {ex.Message}");
+                return false;
             }
         }
     }

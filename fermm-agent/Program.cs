@@ -252,13 +252,13 @@ static async Task RunAgent(string[] args)
     var builder = Host.CreateApplicationBuilder(args);
     
     // Configure for Windows Service if running as service
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-    {
-        builder.Services.AddWindowsService(options =>
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            options.ServiceName = "FERMM Agent";
-        });
-    }
+            builder.Services.AddWindowsService(options =>
+            {
+                options.ServiceName = "FERMMAgent";
+            });
+        }
     else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
     {
         builder.Services.AddSystemd();

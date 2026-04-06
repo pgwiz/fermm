@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
 using FermmAgent.Models;
@@ -59,7 +60,7 @@ public class PollClient
             
             try
             {
-                await Task.Delay(_pollIntervalMs, ct);
+                await WaitForNextPollAsync(ct);
             }
             catch (OperationCanceledException)
             {
@@ -122,5 +123,25 @@ public class PollClient
             _logger.LogWarning("Failed to post result for command {CommandId}, status {Status}", 
                 result.CommandId, response.StatusCode);
         }
+    }
+
+    private async Task WaitForNextPollAsync(CancellationToken ct)
+    {
+        if (!NetworkInterface.GetIsNetworkAvailable())
+        {
+            var delayTask = Task.Delay(_pollIntervalMs, ct);
+            var networkTask = NetworkAvailability.WaitForNetworkAvailableAsync(ct);
+            var completed = await Task.WhenAny(delayTask, networkTask);
+
+            if (completed == networkTask)
+            {
+                _logger.LogInformation("Network available, resuming polling now");
+                _pollIntervalMs = _config.PollIntervalSeconds * 1000;
+            }
+
+            return;
+        }
+
+        await Task.Delay(_pollIntervalMs, ct);
     }
 }

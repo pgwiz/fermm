@@ -1,3 +1,4 @@
+using System.Net.NetworkInformation;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -59,14 +60,16 @@ public class WsClient : IDisposable
                 
                 try
                 {
-                    await Task.Delay(_reconnectDelayMs, _cts.Token);
+                    var shouldBackoff = await WaitForReconnectDelayAsync(_cts.Token);
+                    if (shouldBackoff)
+                    {
+                        _reconnectDelayMs = Math.Min(_reconnectDelayMs * 2, MaxReconnectDelayMs);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
                     break;
                 }
-                
-                _reconnectDelayMs = Math.Min(_reconnectDelayMs * 2, MaxReconnectDelayMs);
             }
             finally
             {
@@ -137,6 +140,28 @@ public class WsClient : IDisposable
         }
         
         _logger.LogInformation("Receive loop ended, WebSocket state: {State}", _ws?.State);
+    }
+
+    private async Task<bool> WaitForReconnectDelayAsync(CancellationToken ct)
+    {
+        if (!NetworkInterface.GetIsNetworkAvailable())
+        {
+            var delayTask = Task.Delay(_reconnectDelayMs, ct);
+            var networkTask = NetworkAvailability.WaitForNetworkAvailableAsync(ct);
+            var completed = await Task.WhenAny(delayTask, networkTask);
+
+            if (completed == networkTask)
+            {
+                _logger.LogInformation("Network available, retrying WebSocket connection now");
+                _reconnectDelayMs = 1000;
+                return false;
+            }
+
+            return true;
+        }
+
+        await Task.Delay(_reconnectDelayMs, ct);
+        return true;
     }
 
     public async Task SendAsync(string message, CancellationToken ct)
