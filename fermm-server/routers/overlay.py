@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import json
+import uuid
 
 from database import get_db
 from models.db import Device
@@ -38,12 +39,15 @@ async def spawn_overlay(
         )
     
     # Send spawn command to device via WebSocket
+    command_id = str(uuid.uuid4())
     command = {
+        "command_id": command_id,
         "type": "overlay",
         "payload": json.dumps({
             "action": "spawn",
             "config": config or {}
-        })
+        }),
+        "timeout_seconds": 30
     }
     
     await manager.send_command(device_id, command)
@@ -51,7 +55,8 @@ async def spawn_overlay(
     return {
         "status": "success",
         "message": "Overlay spawn command sent to device",
-        "device_id": device_id
+        "device_id": device_id,
+        "command_id": command_id
     }
 
 
@@ -76,11 +81,14 @@ async def close_overlay(
         )
     
     # Send close command
+    command_id = str(uuid.uuid4())
     command = {
+        "command_id": command_id,
         "type": "overlay",
         "payload": json.dumps({
             "action": "close"
-        })
+        }),
+        "timeout_seconds": 30
     }
     
     await manager.send_command(device_id, command)
@@ -88,7 +96,8 @@ async def close_overlay(
     return {
         "status": "success",
         "message": "Overlay close command sent to device",
-        "device_id": device_id
+        "device_id": device_id,
+        "command_id": command_id
     }
 
 
@@ -119,12 +128,15 @@ async def send_overlay_message(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message content required")
     
     # Send message command
+    command_id = str(uuid.uuid4())
     command = {
+        "command_id": command_id,
         "type": "overlay",
         "payload": json.dumps({
             "action": "send_message",
             "message": content
-        })
+        }),
+        "timeout_seconds": 30
     }
     
     await manager.send_command(device_id, command)
@@ -132,5 +144,6 @@ async def send_overlay_message(
     return {
         "status": "success",
         "message": "Message sent to overlay",
-        "device_id": device_id
+        "device_id": device_id,
+        "command_id": command_id
     }
