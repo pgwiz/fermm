@@ -23,32 +23,14 @@ jobs:
             -p:EnableWindowsTargeting=true \
             -o dist/windows
 
-      - name: Build Linux x64
-        run: |
-          dotnet publish fermm-agent -c Release -r linux-x64 \
-            --self-contained true -p:PublishSingleFile=true \
-            -o dist/linux
-
-      - name: Build macOS ARM64
-        run: |
-          dotnet publish fermm-agent -c Release -r osx-arm64 \
-            --self-contained true -p:PublishSingleFile=true \
-            -o dist/macos
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: fermm-agent-binaries
-          path: |
-            dist/windows/fermm-agent.exe
-            dist/linux/fermm-agent
-            dist/macos/fermm-agent
+          path: dist/windows/fermm-agent.exe
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            dist/windows/fermm-agent.exe
-            dist/linux/fermm-agent
-            dist/macos/fermm-agent
+          files: dist/windows/fermm-agent.exe
