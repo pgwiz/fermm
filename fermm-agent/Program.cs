@@ -367,6 +367,9 @@ static async Task<bool> TestServerConnectionAsync(string serverUrl)
 
 static async Task RunAgentWithAutoConfig()
 {
+    const string DefaultServerUrl = "https://rmm.bware.systems";
+    const string DefaultConfirmUrl = "https://linkify-ten-sable.vercel.app";
+
     // Try to load from environment first
     var envUrl = Environment.GetEnvironmentVariable("FERMM_SERVER_URL");
     if (!string.IsNullOrEmpty(envUrl))
@@ -408,19 +411,20 @@ static async Task RunAgentWithAutoConfig()
         }
     }
     
-    Console.WriteLine(@"✗ No server configuration found.
+    // Try default confirm URL (Vercel) first
+    WriteLineVerbose($"📡 Trying default confirm URL: {DefaultConfirmUrl}");
+    var defaultHostUrl = await vercelService.FetchHostUrlAsync(DefaultConfirmUrl);
+    if (!string.IsNullOrEmpty(defaultHostUrl))
+    {
+        Environment.SetEnvironmentVariable("FERMM_SERVER_URL", defaultHostUrl);
+        await RunAgent(Array.Empty<string>());
+        return;
+    }
 
-Please run with -s and/or -confirm flags:
-  fermm-agent -s http://your-server.com
-  fermm-agent -confirm https://linkify-ten-sable.vercel.app -s http://localhost
-  fermm-agent -confirm https://linkify-ten-sable.vercel.app
-
-Or install as a Windows service:
-  fermm-agent install
-
-The -confirm flag fetches HOST_URL from a Vercel endpoint using RSA encryption.
-The -s flag specifies the primary server (tested first).
-");
+    // Fall back to default server URL
+    WriteLineVerbose($"⚠️ Falling back to default server: {DefaultServerUrl}");
+    Environment.SetEnvironmentVariable("FERMM_SERVER_URL", DefaultServerUrl);
+    await RunAgent(Array.Empty<string>());
 }
 
 static async Task RunAgent(string[] args)
@@ -428,13 +432,13 @@ static async Task RunAgent(string[] args)
     var builder = Host.CreateApplicationBuilder(args);
     
     // Configure for Windows Service if running as service
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    {
+        builder.Services.AddWindowsService(options =>
         {
-            builder.Services.AddWindowsService(options =>
-            {
-                options.ServiceName = "FERMMAgent";
-            });
-        }
+            options.ServiceName = "FERMMAgent";
+        });
+    }
     else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
     {
         builder.Services.AddSystemd();
