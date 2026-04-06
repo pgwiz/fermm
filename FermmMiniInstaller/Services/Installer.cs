@@ -37,6 +37,9 @@ namespace FermmMiniInstaller.Services
 
                 string targetAgentPath = Path.Combine(_installPath, "fermm-agent.exe");
 
+                // Stop running service before touching files
+                await EnsureServiceStoppedForInstallAsync(targetAgentPath);
+
                 if (string.Equals(Path.GetExtension(agentBundlePath), ".zip", StringComparison.OrdinalIgnoreCase))
                 {
                     // Extract agent bundle
@@ -80,16 +83,15 @@ namespace FermmMiniInstaller.Services
                 ProgressChanged?.Invoke("Configuring agent...");
                 await InitializeAgentConfigAsync(targetAgentPath);
 
-                // Prefer Windows service for auto-start (falls back to Run key)
-                var serviceInstalled = TryEnsureService(targetAgentPath);
-                if (!serviceInstalled)
+                // Prefer Windows service for auto-start
+                var serviceStarted = TryEnsureService(targetAgentPath);
+                if (serviceStarted)
                 {
-                    ProgressChanged?.Invoke("Setting auto-start...");
-                    SetAutoStart(targetAgentPath);
+                    RemoveAutoStart();
                 }
                 else
                 {
-                    RemoveAutoStart();
+                    ProgressChanged?.Invoke("Service not started. Run installer as administrator to install/start.");
                 }
 
                 ProgressChanged?.Invoke("Complete!");
@@ -304,6 +306,35 @@ namespace FermmMiniInstaller.Services
             }
         }
 
+        private async Task EnsureServiceStoppedForInstallAsync(string agentPath)
+        {
+            var state = GetServiceState();
+            if (state != ServiceState.Running)
+            {
+                return;
+            }
+
+            if (!IsRunningAsAdmin())
+            {
+                throw new Exception("FERMM service is running. Run installer as administrator to update.");
+            }
+
+            ProgressChanged?.Invoke("Stopping service...");
+            TryRunProcess(agentPath, "stop-service");
+
+            // Wait for stop (up to 10s)
+            for (int i = 0; i < 10; i++)
+            {
+                await Task.Delay(1000);
+                if (GetServiceState() != ServiceState.Running)
+                {
+                    return;
+                }
+            }
+
+            throw new Exception("Service did not stop. Please retry.");
+        }
+
         private bool TryEnsureService(string agentPath)
         {
             if (!OperatingSystem.IsWindows())
@@ -311,29 +342,79 @@ namespace FermmMiniInstaller.Services
                 return false;
             }
 
-            if (IsServiceInstalled())
+            var state = GetServiceState();
+
+            if (IsRunningAsAdmin())
             {
-                ProgressChanged?.Invoke("Service already installed. Ensuring auto-start...");
-                TryRunProcess("sc", $"config \"{ServiceName}\" start= auto");
-                TryStartService();
+                ProgressChanged?.Invoke("Ensuring Windows service...");
+
+                // Stop/uninstall if present (ignore failures)
+                TryRunProcess(agentPath, "stop-service");
+                TryRunProcess(agentPath, "uninstall");
+
+                if (!TryRunProcess(agentPath, "install"))
+                {
+                    ProgressChanged?.Invoke("Service install failed.");
+                    return false;
+                }
+
+                if (!TryRunProcess(agentPath, "start-service"))
+                {
+                    ProgressChanged?.Invoke("Service start failed.");
+                    return false;
+                }
+
                 return true;
             }
 
-            if (!IsRunningAsAdmin())
+            // Non-admin: only attempt to start if already installed
+            if (state == ServiceState.Running)
             {
-                ProgressChanged?.Invoke("Service install requires admin. Falling back to user startup.");
+                ProgressChanged?.Invoke("Service already running.");
+                return true;
+            }
+
+            if (state == ServiceState.Stopped)
+            {
+                ProgressChanged?.Invoke("Attempting to start service...");
+                if (TryRunProcess(agentPath, "start-service"))
+                {
+                    return true;
+                }
+
+                ProgressChanged?.Invoke("Service start failed. Run installer as administrator.");
                 return false;
             }
 
-            ProgressChanged?.Invoke("Installing Windows service...");
-            if (!TryRunProcess(agentPath, "install"))
+            ProgressChanged?.Invoke("Service not installed. Run installer as administrator.");
+            return false;
+        }
+
+        private enum ServiceState
+        {
+            Running,
+            Stopped,
+            Unknown
+        }
+
+        private ServiceState? GetServiceState()
+        {
+            if (!TryRunProcess("sc", $"query \"{ServiceName}\"", out var output, out _))
             {
-                ProgressChanged?.Invoke("Service install failed. Falling back to user startup.");
-                return false;
+                return null;
             }
 
-            TryStartService();
-            return true;
+            if (output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase))
+            {
+                return ServiceState.Running;
+            }
+
+            if (output.Contains("STOPPED", StringComparison.OrdinalIgnoreCase))
+            {
+                return ServiceState.Stopped;
+            }
+
+            return ServiceState.Unknown;
         }
 
         private bool IsServiceInstalled()
@@ -369,6 +450,14 @@ namespace FermmMiniInstaller.Services
 
         private bool TryRunProcess(string fileName, string arguments)
         {
+            return TryRunProcess(fileName, arguments, out _, out _);
+        }
+
+        private bool TryRunProcess(string fileName, string arguments, out string output, out string error)
+        {
+            output = "";
+            error = "";
+
             try
             {
                 var startInfo = new ProcessStartInfo
@@ -390,13 +479,14 @@ namespace FermmMiniInstaller.Services
 
                 process.WaitForExit();
 
+                output = process.StandardOutput.ReadToEnd();
+                error = process.StandardError.ReadToEnd();
+
                 if (process.ExitCode == 0)
                 {
                     return true;
                 }
 
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
                 var message = string.Join(" ", new[] { output, error }
                     .Where(s => !string.IsNullOrWhiteSpace(s)))
                     .Trim();
