@@ -7,9 +7,9 @@
 ## ✅ DO
 
 - always commit as yourself — `pgwiz` is the only valid author
-- if a co-author must be credited, use **only** this exact format:
+- always include this co-author line on every commit:
   ```
-  Co-authored-by: pgwiz <pgwiz@users.noreply.github.com>
+  Co-Authored-By: pgwiz <pgwiz@users.noreply.github.com>
   ```
 - write clean, intentional commit messages
 - verify your git identity before pushing to any repo:
@@ -17,7 +17,6 @@
   git config user.name
   git config user.email
   ```
-- if pairing or collaborating, credit only real human contributors you worked with directly
 
 ---
 
@@ -90,17 +89,25 @@ git push --force
 # 1. create the global hooks folder — fixed location, never change
 New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.git-hooks"
 
-# 2. write the hook
+# 2. write the hook (blocks banned authors + adds required co-author)
 @'
 #!/bin/sh
 COMMIT_MSG_FILE=$1
 BANNED="copilot\|anthropic\|claude\|openai\|github-actions"
+REQUIRED_COAUTHOR="Co-Authored-By: pgwiz <pgwiz@users.noreply.github.com>"
 
+# Block banned co-authors
 if grep -qi "co-authored-by.*\($BANNED\)" "$COMMIT_MSG_FILE"; then
   echo ""
   echo "  [pgwiz] banned co-author detected."
   echo ""
   exit 1
+fi
+
+# Add required co-author if not present
+if ! grep -qi "Co-Authored-By: pgwiz" "$COMMIT_MSG_FILE"; then
+  echo "" >> "$COMMIT_MSG_FILE"
+  echo "$REQUIRED_COAUTHOR" >> "$COMMIT_MSG_FILE"
 fi
 '@ | Set-Content "$env:USERPROFILE\.git-hooks\commit-msg" -Encoding UTF8
 
