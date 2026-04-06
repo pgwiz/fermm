@@ -62,9 +62,9 @@ namespace FermmMiniInstaller.Services
                 // Copy this installer for future updates
                 ProgressChanged?.Invoke("Setting up updater...");
                 string installerPath = Path.Combine(_installPath, "FermmMiniInstaller.exe");
-                string currentInstallerPath = AppContext.BaseDirectory;
-                string currentExePath = Path.Combine(currentInstallerPath, "FermmMiniInstaller.exe");
-                if (File.Exists(currentExePath))
+                string currentExePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName ?? "";
+                if (!string.IsNullOrEmpty(currentExePath) && File.Exists(currentExePath) && 
+                    !string.Equals(currentExePath, installerPath, StringComparison.OrdinalIgnoreCase))
                 {
                     File.Copy(currentExePath, installerPath, overwrite: true);
                 }
