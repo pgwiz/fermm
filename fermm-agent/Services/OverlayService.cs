@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -147,6 +149,42 @@ public class OverlayService
         }
     }
 
+    private NamedPipeServerStream CreatePipeServer(string pipeName)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return new NamedPipeServerStream(
+                pipeName,
+                PipeDirection.InOut,
+                1,
+                PipeTransmissionMode.Message,
+                PipeOptions.Asynchronous);
+        }
+
+        var security = new PipeSecurity();
+        var authenticatedUsers = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
+        var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+
+        security.AddAccessRule(new PipeAccessRule(
+            authenticatedUsers,
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Allow));
+        security.AddAccessRule(new PipeAccessRule(
+            everyone,
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Allow));
+
+        return NamedPipeServerStreamAcl.Create(
+            pipeName,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Message,
+            PipeOptions.Asynchronous,
+            0,
+            0,
+            security);
+    }
+
     private async Task ListenToPipeAsync(CancellationToken ct)
     {
         try
@@ -154,12 +192,7 @@ public class OverlayService
             var pipeName = $"fermm_overlay_{_config.DeviceId}";
             _pipeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-            _pipeServer = new NamedPipeServerStream(
-                pipeName,
-                PipeDirection.InOut,
-                1,
-                PipeTransmissionMode.Message
-            );
+            _pipeServer = CreatePipeServer(pipeName);
 
             _logger.LogInformation("⏳ Waiting for overlay connection on pipe {PipeName}...", pipeName);
 

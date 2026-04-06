@@ -525,7 +525,7 @@ public class OverlayForm : Form
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Pipe connection error: {ex.Message}");
+            LogOverlayError($"Pipe connection error: {ex.Message}");
         }
     }
 
@@ -542,6 +542,20 @@ public class OverlayForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Failed to send message: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void LogOverlayError(string message)
+    {
+        try
+        {
+            var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "overlay.log");
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            File.AppendAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Swallow to keep overlay silent
         }
     }
 }

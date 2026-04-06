@@ -183,6 +183,8 @@ public class Program
     [System.STAThread]
     private static int RunOverlay(string[] args)
     {
+        HideConsoleWindow();
+
         string deviceId = "test-device";
         
         // Parse --device-id argument
@@ -202,8 +204,6 @@ public class Program
             deviceId = File.ReadAllText(configPath).Trim();
         }
 
-        Console.WriteLine($"Starting overlay for device: {deviceId}");
-        
         System.Windows.Forms.Application.EnableVisualStyles();
         System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
         System.Windows.Forms.Application.Run(new FermmAgent.UI.OverlayForm(deviceId));
@@ -224,6 +224,33 @@ public class Program
             Console.WriteLine(message);
         }
     }
+
+    private static void HideConsoleWindow()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        var handle = GetConsoleWindow();
+        if (handle != IntPtr.Zero)
+        {
+            ShowWindow(handle, SW_HIDE);
+        }
+
+        FreeConsole();
+    }
+
+    private const int SW_HIDE = 0;
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool FreeConsole();
 
 static async Task<int> ParseAndRunAsync(string[] args)
 {
