@@ -58,20 +58,20 @@ public class Program
             if (Environment.UserInteractive && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 var serviceState = GetServiceState();
-                
+
                 // Service is running - just notify and exit
                 if (serviceState == ServiceState.Running)
                 {
-                    Console.WriteLine("FERMM Agent is already running as a service.");
+                    Console.WriteLine("FERMM Agent is running in the background service.");
                     Console.WriteLine("Use 'fermm-agent --quit' to stop it.");
                     if (!_verboseMode)
                     {
-                        Console.WriteLine("Closing in 5 seconds...");
-                        await Task.Delay(5000);
+                        Console.WriteLine("Closing in 10 seconds...");
+                        await Task.Delay(10000);
                     }
                     return 0;
                 }
-                
+
                 // Service exists but stopped - try to start it
                 if (serviceState == ServiceState.Stopped)
                 {
@@ -79,11 +79,11 @@ public class Program
                     {
                         if (TryRunScCommand($"start \"{ServiceName}\"", out _, out _))
                         {
-                            Console.WriteLine("FERMM Agent started as background service.");
+                            Console.WriteLine("FERMM Agent started in background.");
                             if (!_verboseMode)
                             {
-                                Console.WriteLine("Closing in 5 seconds...");
-                                await Task.Delay(5000);
+                                Console.WriteLine("Closing in 10 seconds...");
+                                await Task.Delay(10000);
                             }
                             return 0;
                         }
@@ -93,10 +93,22 @@ public class Program
                         Console.WriteLine("Service is installed but stopped. Run as admin to start.");
                     }
                 }
-                
-                // No service - if verbose, run in console; otherwise try to install service
+
+                // No service - if not verbose, attempt to install and start (admin only)
                 if (!_verboseMode && serviceState == null)
                 {
+                    if (IsRunningAsAdmin())
+                    {
+                        if (InstallService() == 0)
+                        {
+                            StartService();
+                            Console.WriteLine("FERMM Agent installed and started in background.");
+                            Console.WriteLine("Closing in 10 seconds...");
+                            await Task.Delay(10000);
+                            return 0;
+                        }
+                    }
+
                     Console.WriteLine("Running in foreground mode. Install service for background operation:");
                     Console.WriteLine("  fermm-agent install   (requires admin)");
                     Console.WriteLine("");

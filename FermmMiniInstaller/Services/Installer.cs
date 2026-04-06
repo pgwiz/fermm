@@ -6,7 +6,10 @@ using System.Text.Json;
 using System.IO.Compression;
 using System.Threading.Tasks;
 using Microsoft.Win32;
+using System.Net.Http;
+using System.Security.Cryptography;
 using System.Security.Principal;
+using System.Text;
 using FermmMiniInstaller.Models;
 
 namespace FermmMiniInstaller.Services
@@ -102,30 +105,148 @@ namespace FermmMiniInstaller.Services
         {
             const string DefaultServerUrl = "https://rmm.bware.systems";
             const string VercelConfigUrl = "https://linkify-ten-sable.vercel.app"; // Vercel endpoint for HOST_URL
-            
+            string? resolvedUrl = null;
+
             try
             {
-                // Write config.dat with server URL
-                // The agent will use this on startup
-                string configDatPath = Path.Combine(_installPath, "config.dat");
-                
-                var configData = new
-                {
-                    ServerUrl = DefaultServerUrl,
-                    ConfirmUrl = VercelConfigUrl,
-                    LastUpdated = DateTime.UtcNow.ToString("O")
-                };
-                
-                string json = JsonSerializer.Serialize(configData, new JsonSerializerOptions { WriteIndented = true });
-                await File.WriteAllTextAsync(configDatPath, json);
-                
-                ProgressChanged?.Invoke("Server URL configured");
+                resolvedUrl = await TryFetchHostUrlAsync(VercelConfigUrl);
+            }
+            catch (Exception ex)
+            {
+                ProgressChanged?.Invoke($"Warning: Failed to fetch host URL: {ex.Message}");
+            }
+
+            if (string.IsNullOrWhiteSpace(resolvedUrl))
+            {
+                resolvedUrl = DefaultServerUrl;
+            }
+
+            try
+            {
+                await SaveConfigDatAsync(resolvedUrl, VercelConfigUrl);
+                ProgressChanged?.Invoke($"Server URL configured: {resolvedUrl}");
             }
             catch (Exception ex)
             {
                 ProgressChanged?.Invoke($"Warning: Could not write config.dat: {ex.Message}");
                 // Non-fatal, agent will prompt for config on first run
             }
+        }
+
+        private async Task SaveConfigDatAsync(string serverUrl, string confirmUrl)
+        {
+            string configDatPath = Path.Combine(_installPath, "config.dat");
+            var configData = new
+            {
+                ServerUrl = serverUrl,
+                ConfirmUrl = confirmUrl,
+                LastUpdated = DateTime.UtcNow.ToString("O")
+            };
+
+            string json = JsonSerializer.Serialize(configData, new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(configDatPath, json);
+        }
+
+        private async Task<string?> TryFetchHostUrlAsync(string confirmUrl)
+        {
+            var privateKeyPath = Path.Combine(_installPath, "private_rsa.key");
+            if (!File.Exists(privateKeyPath))
+            {
+                ProgressChanged?.Invoke("private_rsa.key not found. Using default server.");
+                return null;
+            }
+
+            var privateKeyPem = await File.ReadAllTextAsync(privateKeyPath);
+            using var rsa = RSA.Create();
+            rsa.ImportFromPem(privateKeyPem.ToCharArray());
+
+            var publicKeyPem = ExportPublicKeyPkcs1Pem(rsa);
+
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            var baseUrl = confirmUrl.TrimEnd('/');
+
+            // Step 1: GET /api/public-key
+            var pkResponse = await http.GetAsync($"{baseUrl}/api/public-key");
+            if (!pkResponse.IsSuccessStatusCode)
+            {
+                ProgressChanged?.Invoke($"Confirm URL public-key failed: {pkResponse.StatusCode}");
+                return null;
+            }
+
+            var pkJson = await pkResponse.Content.ReadAsStringAsync();
+            using var pkDoc = JsonDocument.Parse(pkJson);
+            var serverPublicKey = pkDoc.RootElement.GetProperty("publicKey").GetString();
+
+            var localFingerprint = GetKeyFingerprint(publicKeyPem);
+            var serverFingerprint = GetKeyFingerprint(serverPublicKey!);
+            if (localFingerprint != serverFingerprint)
+            {
+                ProgressChanged?.Invoke("Confirm URL key fingerprint mismatch.");
+                return null;
+            }
+
+            // Step 2: POST /api/data
+            var postContent = new StringContent(
+                JsonSerializer.Serialize(new { publicKey = publicKeyPem }),
+                Encoding.UTF8,
+                "application/json"
+            );
+
+            var dataResponse = await http.PostAsync($"{baseUrl}/api/data", postContent);
+            var dataJson = await dataResponse.Content.ReadAsStringAsync();
+            using var dataDoc = JsonDocument.Parse(dataJson);
+
+            if (!dataDoc.RootElement.TryGetProperty("ok", out var okProp) || !okProp.GetBoolean())
+            {
+                ProgressChanged?.Invoke("Confirm URL rejected request.");
+                return null;
+            }
+
+            var encryptedKey = Convert.FromBase64String(dataDoc.RootElement.GetProperty("encryptedKey").GetString()!);
+            var iv = Convert.FromBase64String(dataDoc.RootElement.GetProperty("iv").GetString()!);
+            var ciphertext = Convert.FromBase64String(dataDoc.RootElement.GetProperty("ciphertext").GetString()!);
+            var authTag = Convert.FromBase64String(dataDoc.RootElement.GetProperty("authTag").GetString()!);
+
+            var aesKey = rsa.Decrypt(encryptedKey, RSAEncryptionPadding.OaepSHA1);
+            using var aesGcm = new AesGcm(aesKey, 16);
+            var plaintext = new byte[ciphertext.Length];
+            aesGcm.Decrypt(iv, ciphertext, authTag, plaintext);
+
+            var payloadJson = Encoding.UTF8.GetString(plaintext);
+            using var payloadDoc = JsonDocument.Parse(payloadJson);
+
+            if (payloadDoc.RootElement.TryGetProperty("HOST_URL", out var hostUrlProp))
+            {
+                var hostUrl = hostUrlProp.GetString();
+                return string.IsNullOrWhiteSpace(hostUrl) ? null : hostUrl;
+            }
+
+            return null;
+        }
+
+        private static string ExportPublicKeyPkcs1Pem(RSA rsa)
+        {
+            var publicKeyBytes = rsa.ExportRSAPublicKey();
+            var base64 = Convert.ToBase64String(publicKeyBytes);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("-----BEGIN RSA PUBLIC KEY-----");
+            for (int i = 0; i < base64.Length; i += 64)
+            {
+                sb.AppendLine(base64.Substring(i, Math.Min(64, base64.Length - i)));
+            }
+            sb.AppendLine("-----END RSA PUBLIC KEY-----");
+
+            return sb.ToString();
+        }
+
+        private static string GetKeyFingerprint(string publicKeyPem)
+        {
+            using var rsa = RSA.Create();
+            rsa.ImportFromPem(publicKeyPem.ToCharArray());
+            var derBytes = rsa.ExportRSAPublicKey();
+            var hash = SHA256.HashData(derBytes);
+            return Convert.ToHexString(hash).ToLower();
         }
 
         private async Task WriteConfigAsync()
