@@ -72,11 +72,14 @@ namespace FermmMiniInstaller
                 }
 
                 string appsettingsPath = Path.Combine(installRoot, "appsettings.json");
+                string appsettingsDevPath = Path.Combine(installRoot, "appsettings.Development.json");
                 string privateKeyPath = Path.Combine(installRoot, "private_rsa.key");
-                if (!File.Exists(appsettingsPath) || !File.Exists(privateKeyPath))
+                // Accept either appsettings.json or appsettings.Development.json
+                bool hasAppsettings = File.Exists(appsettingsPath) || File.Exists(appsettingsDevPath);
+                if (!hasAppsettings || !File.Exists(privateKeyPath))
                 {
                     needsRepair = true;
-                    await Log("Missing required agent files (appsettings.json or private_rsa.key).");
+                    await Log("Missing required agent files (appsettings or private_rsa.key).");
                 }
 
                 UpdateInfo updateInfo;
