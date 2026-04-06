@@ -41,24 +41,23 @@ public class OverlayService
 
             _logger.LogInformation("🎨 Spawning overlay...");
 
-            // Get the overlay executable path (should be in same directory as agent)
-            var agentDir = AppContext.BaseDirectory;
-            var overlayExe = Path.Combine(agentDir, "fermm-overlay.exe");
-
-            if (!File.Exists(overlayExe))
+            // Use the same executable with --overlay flag
+            var agentExe = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+            
+            if (string.IsNullOrEmpty(agentExe) || !File.Exists(agentExe))
             {
-                _logger.LogError("Overlay executable not found at {Path}", overlayExe);
+                _logger.LogError("Cannot find agent executable path");
                 return;
             }
 
             // Start the overlay process
             var psi = new ProcessStartInfo
             {
-                FileName = overlayExe,
+                FileName = agentExe,
                 UseShellExecute = false,
                 RedirectStandardOutput = false,
                 CreateNoWindow = false,
-                Arguments = $"--device-id {_config.DeviceId}"
+                Arguments = $"--overlay --device-id {_config.DeviceId}"
             };
 
             _overlayProcess = Process.Start(psi);

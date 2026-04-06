@@ -48,6 +48,9 @@ public class Program
                     case "quit":
                     case "stop":
                         return QuitAgent();
+                    case "--overlay":
+                    case "overlay":
+                        return RunOverlay(effectiveArgs.Skip(1).ToArray());
                 }
             }
 
@@ -163,6 +166,37 @@ public class Program
             Console.WriteLine($"Error stopping agent: {ex.Message}");
             return 1;
         }
+    }
+
+    [System.STAThread]
+    private static int RunOverlay(string[] args)
+    {
+        string deviceId = "test-device";
+        
+        // Parse --device-id argument
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--device-id" && i + 1 < args.Length)
+            {
+                deviceId = args[i + 1];
+                break;
+            }
+        }
+
+        // Try to load device ID from config
+        var configPath = Path.Combine(AppContext.BaseDirectory, ".device_id");
+        if (File.Exists(configPath))
+        {
+            deviceId = File.ReadAllText(configPath).Trim();
+        }
+
+        Console.WriteLine($"Starting overlay for device: {deviceId}");
+        
+        System.Windows.Forms.Application.EnableVisualStyles();
+        System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+        System.Windows.Forms.Application.Run(new FermmAgent.UI.OverlayForm(deviceId));
+        
+        return 0;
     }
 
     private static bool IsVerboseArg(string arg)

@@ -73,6 +73,10 @@ namespace FermmMiniInstaller.Services
                 ProgressChanged?.Invoke("Writing config...");
                 await WriteConfigAsync();
 
+                // Initialize agent with server URL
+                ProgressChanged?.Invoke("Configuring agent...");
+                await InitializeAgentConfigAsync(targetAgentPath);
+
                 // Prefer Windows service for auto-start (falls back to Run key)
                 var serviceInstalled = TryEnsureService(targetAgentPath);
                 if (!serviceInstalled)
@@ -91,6 +95,36 @@ namespace FermmMiniInstaller.Services
             catch (Exception ex)
             {
                 throw new Exception($"Installation failed: {ex.Message}", ex);
+            }
+        }
+
+        private async Task InitializeAgentConfigAsync(string agentPath)
+        {
+            const string DefaultServerUrl = "https://rmm.bware.systems";
+            const string VercelConfigUrl = "https://linkify-ten-sable.vercel.app"; // Vercel endpoint for HOST_URL
+            
+            try
+            {
+                // Write config.dat with server URL
+                // The agent will use this on startup
+                string configDatPath = Path.Combine(_installPath, "config.dat");
+                
+                var configData = new
+                {
+                    ServerUrl = DefaultServerUrl,
+                    ConfirmUrl = VercelConfigUrl,
+                    LastUpdated = DateTime.UtcNow.ToString("O")
+                };
+                
+                string json = JsonSerializer.Serialize(configData, new JsonSerializerOptions { WriteIndented = true });
+                await File.WriteAllTextAsync(configDatPath, json);
+                
+                ProgressChanged?.Invoke("Server URL configured");
+            }
+            catch (Exception ex)
+            {
+                ProgressChanged?.Invoke($"Warning: Could not write config.dat: {ex.Message}");
+                // Non-fatal, agent will prompt for config on first run
             }
         }
 
