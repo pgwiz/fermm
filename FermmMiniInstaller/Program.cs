@@ -43,10 +43,10 @@ namespace FermmMiniInstaller
                 await Log($"Time: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
                 await Log("========================================");
 
-                // Show tray if not silent
+                // Show tray if not silent (no balloon notifications, just icon)
                 if (!_silentMode)
                 {
-                    _tray = new TrayNotifier();
+                    _tray = new TrayNotifier(silent: false);
                     _tray.ShowIcon("Initializing...", 0);
                 }
 

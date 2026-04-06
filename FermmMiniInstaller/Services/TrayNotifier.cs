@@ -7,9 +7,12 @@ namespace FermmMiniInstaller.Services
     {
         private NotifyIcon? _notifyIcon;
         private ContextMenuStrip? _contextMenu;
+        private bool _silentMode;
 
-        public TrayNotifier()
+        public TrayNotifier(bool silent = false)
         {
+            _silentMode = silent;
+            
             _notifyIcon = new NotifyIcon
             {
                 Icon = SystemIcons.Information,
@@ -27,37 +30,27 @@ namespace FermmMiniInstaller.Services
 
         public void ShowIcon(string message, int percentComplete)
         {
-            if (_notifyIcon == null) return;
+            if (_notifyIcon == null || _silentMode) return;
 
             _notifyIcon.Visible = true;
-            _notifyIcon.Text = $"FERMM: {message} ({percentComplete}%)";
-            
-            // Show balloon tip
-            try
-            {
-                _notifyIcon.ShowBalloonTip(100, "FERMM Installer", message, ToolTipIcon.Info);
-            }
-            catch { }
+            _notifyIcon.Text = $"FERMM: {message}".Length > 63 
+                ? $"FERMM: {message}".Substring(0, 63) 
+                : $"FERMM: {message}";
         }
 
         public void ShowSummary(string message)
         {
-            if (_notifyIcon == null) return;
+            if (_notifyIcon == null || _silentMode) return;
 
             _notifyIcon.Visible = true;
-            _notifyIcon.Text = $"FERMM: {message}";
+            _notifyIcon.Text = $"FERMM: {message}".Length > 63
+                ? $"FERMM: {message}".Substring(0, 63)
+                : $"FERMM: {message}";
 
-            try
-            {
-                var tipIcon = message.Contains("✓") ? ToolTipIcon.Info : ToolTipIcon.Error;
-                _notifyIcon.ShowBalloonTip(3000, "FERMM Installer", message, tipIcon);
-            }
-            catch { }
-
-            // Auto-hide after 5 seconds
+            // Auto-hide after 3 seconds
             Task.Run(async () =>
             {
-                await Task.Delay(5000);
+                await Task.Delay(3000);
                 _notifyIcon.Visible = false;
             });
         }
@@ -78,7 +71,11 @@ namespace FermmMiniInstaller.Services
 
         public void Dispose()
         {
-            _notifyIcon?.Dispose();
+            if (_notifyIcon != null)
+            {
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
+            }
             _contextMenu?.Dispose();
         }
     }
