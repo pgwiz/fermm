@@ -40,16 +40,16 @@ public class OverlayForm : Form
     const uint VK_F1 = 0x70;
 
     // UI Controls
-    private Panel titleBar;
-    private Label titleLabel;
-    private Label hotkeyHint;
-    private TabControl tabControl;
-    private Button btnAddTab;
-    private Button btnClose;
-    private Button btnMinimize;
-    private Button btnToggleClickThrough;
-    private TrackBar opacitySlider;
-    private Label opacityLabel;
+    private Panel titleBar = null!;
+    private Label titleLabel = null!;
+    private Label hotkeyHint = null!;
+    private TabControl tabControl = null!;
+    private Button btnAddTab = null!;
+    private Button btnClose = null!;
+    private Button btnMinimize = null!;
+    private Button btnToggleClickThrough = null!;
+    private TrackBar opacitySlider = null!;
+    private Label opacityLabel = null!;
     private bool isClickThrough = false;
     private Point dragStart;
     private bool isDragging = false;
@@ -108,9 +108,10 @@ public class OverlayForm : Form
     {
         this.Size = new Size(420, 560);
         this.StartPosition = FormStartPosition.Manual;
+        var screen = Screen.PrimaryScreen ?? Screen.AllScreens[0];
         this.Location = new Point(
-            Screen.PrimaryScreen.WorkingArea.Width - 440,
-            Screen.PrimaryScreen.WorkingArea.Height / 2 - 280
+            screen.WorkingArea.Width - 440,
+            screen.WorkingArea.Height / 2 - 280
         );
         this.FormBorderStyle = FormBorderStyle.None;
         this.BackColor = Color.FromArgb(13, 17, 28);
@@ -275,7 +276,7 @@ public class OverlayForm : Form
         this.Controls.Add(tabHeader);
     }
 
-    void DrawTab(object sender, DrawItemEventArgs e)
+    void DrawTab(object? sender, DrawItemEventArgs e)
     {
         var tab = tabControl.TabPages[e.Index];
         bool selected = e.Index == tabControl.SelectedIndex;
@@ -458,7 +459,7 @@ public class OverlayForm : Form
         ctx.Items.Add(item);
     }
 
-    void ToggleClickThrough(object sender, EventArgs e)
+    void ToggleClickThrough(object? sender, EventArgs e)
     {
         isClickThrough = !isClickThrough;
         int style = GetWindowLong(this.Handle, GWL_EXSTYLE);

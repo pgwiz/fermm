@@ -110,7 +110,7 @@ namespace FermmAgent.Handlers
                                     if (retries > 0)
                                         await Task.Delay(1000, ct);
                                 }
-                                catch (Exception ex)
+                                catch (Exception)
                                 {
                                     retries--;
                                     if (retries == 0)

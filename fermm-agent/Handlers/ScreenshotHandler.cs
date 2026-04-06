@@ -251,7 +251,7 @@ public class ScreenshotHandler
                 metadata["active_process_id"] = activeProcess.Id;
                 try
                 {
-                    metadata["active_process_path"] = activeProcess.MainModule?.FileName;
+                    metadata["active_process_path"] = activeProcess.MainModule?.FileName ?? "";
                 }
                 catch { } // Access might be denied for some processes
             }
